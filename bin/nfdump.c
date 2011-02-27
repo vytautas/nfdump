@@ -75,7 +75,6 @@
 #include "version.h"
 #include "util.h"
 #include "flist.h"
-#include "panonymizer.h"
 
 /* hash parameters */
 #define NumPrealloc 128000
@@ -227,14 +226,12 @@ struct printmap_s {
 /* Function Prototypes */
 static void usage(char *name);
 
-static int ParseCryptoPAnKey ( char *s, char *key );
-
 static void PrintSummary(stat_record_t *stat_record, int plain_numbers, int csv_output);
 
 
 static stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
 	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
-	uint64_t limitflows, int anon, int tag, int compress);
+	uint64_t limitflows, int tag, int compress);
 
 /* Functions */
 
@@ -264,7 +261,6 @@ static void usage(char *name) {
 					"-j <file>\tCompress/Uncompress file.\n"
 					"-z\t\tCompress flows in output file. Used in combination with -w.\n"
 					"-l <expr>\tSet limit on packets for line and packed output format.\n"
-					"-K <key>\tAnonymize IP addressses using CryptoPAn with key <key>.\n"
 					"\t\tkey: 32 character string or 64 digit hex string starting with 0x.\n"
 					"-L <expr>\tSet limit on bytes for line and packed output format.\n"
 					"-I \t\tPrint netflow summary statistics info from file, specified by -r.\n"
@@ -292,34 +288,6 @@ static void usage(char *name) {
 					"\t\tyyyy/MM/dd.hh:mm:ss[-yyyy/MM/dd.hh:mm:ss]\n", name);
 } /* usage */
 
-static int ParseCryptoPAnKey ( char *s, char *key ) {
-int i, j;
-char numstr[3];
-
-	if ( strlen(s) == 32 ) {
-		// Key is a string
-		strncpy(key, s, 32);
-		return 1;
-	}
-
-	s[1] = tolower(s[1]);
-	numstr[2] = 0;
-	if ( strlen(s) == 66 && s[0] == '0' && s[1] == 'x' ) {
-		j = 2;
-		for ( i=0; i<32; i++ ) {
-			if ( !isxdigit((int)s[j]) || !isxdigit((int)s[j+1]) )
-				return 0;
-			numstr[0] = s[j++];
-			numstr[1] = s[j++];
-			key[i] = strtol(numstr, NULL, 16);
-		}
-		return 1;
-	}
-
-	// It's an invalid key
-	return 0;
-
-} // End of ParseCryptoPAnKey
 
 static void PrintSummary(stat_record_t *stat_record, int plain_numbers, int csv_output) {
 static double	duration;
@@ -360,13 +328,13 @@ char 		byte_str[32], packet_str[32], bps_str[32], pps_str[32], bpp_str[32];
 
 stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
 	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
-	uint64_t limitflows, int anon, int tag, int compress) {
+	uint64_t limitflows, int tag, int compress) {
 data_block_header_t in_block_header;					
 common_record_t 	*flow_record, *in_buff;
 master_record_t		*master_record;
-nffile_t			nffile;
+nffile_t			*nffile;
 stat_record_t 		stat_record;
-int 				rfd, done, write_file, is_stdout;
+int 				rfd, done, write_file;
 char 				*string;
 
 #ifdef COMPAT15
@@ -400,8 +368,7 @@ int	v1_map_done = 0;
 	// do not write flows to file, when doing any stats
 	// -w may apply for flow_stats later
 	write_file = !(sort_flows || flow_stat || element_stat) && wfile;
-	// is the file stdout?
-	is_stdout  = wfile && ( strcmp(wfile, "-") == 0 );
+	nffile = NULL;
 
 	// allocate network buffer
 	in_buff = (common_record_t *) malloc(BUFFSIZE);
@@ -419,13 +386,17 @@ int	v1_map_done = 0;
 		return stat_record;
 	}
 
-	memset((void *)&nffile, 0, sizeof(nffile));
 	// prepare file is requested
-	if ( write_file && !InitExportFile(wfile, compress, &nffile) ) {
-		if ( rfd ) 
-			close(rfd);
-		free(in_buff);
-		return stat_record;
+	if ( write_file ) {
+		char *string;
+		nffile = OpenNewFile(wfile, NULL, compress, IsAnonymized(), &string);
+		if ( !nffile ) {
+			fprintf(stderr, "%s\n", string);
+			if ( rfd ) 
+				close(rfd);
+			free(in_buff);
+			return stat_record;
+		}
 	}
 
 	// setup Filter Engine to point to master_record, as any record read from file
@@ -491,9 +462,9 @@ int	v1_map_done = 0;
 				map->extension_size += extension_descriptor[EX_IO_SNMP_2].size;
 				map->extension_size += extension_descriptor[EX_AS_2].size;
 
-				if ( Insert_Extension_Map(&extension_map_list,map) && nffile.wfd ) {
+				if ( Insert_Extension_Map(&extension_map_list,map) && write_file ) {
 					// flush new map
-					AppendToBuffer(&nffile, (void *)map, map->size);
+					AppendToBuffer(nffile, (void *)map, map->size);
 				} // else map already known and flushed
 
 				v1_map_done = 1;
@@ -582,30 +553,12 @@ int	v1_map_done = 0;
 				} else {
 
 
-					if ( nffile.wfd != 0 ) {
-						if ( anon ) {
-							pointer_addr_t size = COMMON_RECORD_DATA_SIZE;
-							if ( (flow_record->flags & FLAG_IPV6_ADDR ) == 0 ) {
-								uint32_t	*ip = (uint32_t *)((pointer_addr_t)nffile.writeto + size);
-								ip[0] = anonymize(ip[0]);
-								ip[1] = anonymize(ip[1]);
-							} else {
-								ipv6_block_t *ip = (ipv6_block_t *)((pointer_addr_t)nffile.writeto + size);
-								uint64_t	anon_ip[2];
-								anonymize_v6(ip->srcaddr, anon_ip);
-								ip->srcaddr[0] = anon_ip[0];
-								ip->srcaddr[1] = anon_ip[1];
-	
-								anonymize_v6(ip->dstaddr, anon_ip);
-								ip->dstaddr[0] = anon_ip[0];
-								ip->dstaddr[1] = anon_ip[1];
-							}
-						} 
-						AppendToBuffer(&nffile, (void *)flow_record, flow_record->size);
+					if ( write_file ) {
+						AppendToBuffer(nffile, (void *)flow_record, flow_record->size);
 					} else if ( print_record ) {
 
 						// if we need to print out this record
-						print_record(master_record, &string, anon, tag);
+						print_record(master_record, &string, tag);
 						if ( string ) {
 							if ( limitflows ) {
 								if ( (stat_record.numflows <= limitflows) )
@@ -623,9 +576,9 @@ int	v1_map_done = 0;
 			} else if ( flow_record->type == ExtensionMapType ) {
 				extension_map_t *map = (extension_map_t *)flow_record;
 
-				if ( Insert_Extension_Map(&extension_map_list, map) && nffile.wfd  ) {
+				if ( Insert_Extension_Map(&extension_map_list, map) && write_file ) {
 					// flush new map
-					AppendToBuffer(&nffile, (void *)map, map->size);
+					AppendToBuffer(nffile, (void *)map, map->size);
 				} // else map already known and flushed
 			} else {
 				fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
@@ -647,22 +600,23 @@ int	v1_map_done = 0;
 		close(rfd);
 
 	// flush output file
-	if ( nffile.wfd ) {
+	if ( write_file ) {
 		// flush current buffer to disc
-		if ( nffile.block_header->NumRecords ) {
-			if ( WriteBlock(&nffile) <= 0 ) {
+		if ( nffile->block_header->NumRecords ) {
+			if ( WriteBlock(nffile) <= 0 ) {
 				fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
 			} else {
-				nffile.file_blocks++;
+				nffile->file_header->NumBlocks++;
 			}
 		}
 
 		/* Stat info */
 		if ( write_file ) {
 			/* Write stat info and close file */
-			CloseUpdateFile(nffile.wfd, &stat_record, nffile.file_blocks, GetIdent(), nffile.compress, &string );
+			CloseUpdateFile(nffile, &stat_record, GetIdent(), &string );
 			if ( string != NULL )
 				fprintf(stderr, "%s\n", string);
+			nffile = DisposeFile(nffile);
 		} // else stdout
 	}	 
 
@@ -684,14 +638,13 @@ char		*byte_limit_string, *packet_limit_string, *print_mode, *record_header;
 char		*order_by, *query_file, *UnCompress_file, *nameserver, *aggr_fmt;
 int 		c, ffd, ret, element_stat, fdump;
 int 		i, user_format, quiet, flow_stat, topN, aggregate, aggregate_mask, bidir;
-int 		print_stat, syntax_only, date_sorted, do_anonymize, do_tag, compress;
+int 		print_stat, syntax_only, date_sorted, do_tag, compress;
 int			plain_numbers, GuessDir, pipe_output, csv_output;
 time_t 		t_start, t_end;
 uint16_t	Aggregate_Bits;
 uint32_t	limitflows;
 uint64_t	AggregateMasks[AGGR_SIZE];
 char 		Ident[IdentLen];
-char		CryptoPAnKey[32];
 
 	rfile = Rfile = Mdirs = wfile = ffile = filter = tstring = stat_type = NULL;
 	byte_limit_string = packet_limit_string = NULL;
@@ -709,7 +662,6 @@ char		CryptoPAnKey[32];
 	total_bytes		= 0;
 	total_flows		= 0;
 	skipped_blocks	= 0;
-	do_anonymize	= 0;
 	do_tag			= 0;
 	quiet			= 0;
 	user_format		= 0;
@@ -799,11 +751,8 @@ char		CryptoPAnKey[32];
 				packet_limit_string = optarg;
 				break;
 			case 'K':
-				if ( !ParseCryptoPAnKey(optarg, CryptoPAnKey) ) {
-					fprintf(stderr, "Invalid key '%s' for CryptoPAn!\n", optarg);
-					exit(255);
-				}
-				do_anonymize = 1;
+				fprintf(stderr, "*** Anonymisation moved! Use nfanon to anonymise flows!\n");
+				exit(255);
 				break;
 			case 'L':
 				byte_limit_string = optarg;
@@ -1119,13 +1068,10 @@ char		CryptoPAnKey[32];
 		}
 	}
 
-	if (do_anonymize)
-		PAnonymizer_Init((uint8_t *)CryptoPAnKey);
-
 	nfprof_start(&profile_data);
 	sum_stat = process_data(wfile, element_stat, aggregate || flow_stat, date_sorted,
 						print_header, print_record, t_start, t_end, 
-						limitflows, do_anonymize, do_tag, compress);
+						limitflows, do_tag, compress);
 	nfprof_end(&profile_data, total_flows);
 
 	if ( total_bytes == 0 )
@@ -1134,29 +1080,29 @@ char		CryptoPAnKey[32];
 
 	if (aggregate || date_sorted) {
 		if ( wfile ) {
-			ExportFlowTable(wfile, compress, aggregate, bidir, date_sorted, do_anonymize);
+			ExportFlowTable(wfile, compress, aggregate, bidir, date_sorted);
 		} else {
-			PrintFlowTable(print_record, limitflows, date_sorted, do_anonymize, do_tag, GuessDir);
+			PrintFlowTable(print_record, limitflows, date_sorted, do_tag, GuessDir);
 		}
 	}
 
 	if (flow_stat) {
-		PrintFlowStat(record_header, print_record, topN, do_anonymize, do_tag, quiet, csv_output);
+		PrintFlowStat(record_header, print_record, topN, do_tag, quiet, csv_output);
 #ifdef DEVEL
 		printf("Loopcnt: %u\n", loopcnt);
 #endif
 	} 
 
 	if (element_stat) {
-		PrintElementStat(&sum_stat, record_header, print_record, topN, do_anonymize, do_tag, quiet, pipe_output, csv_output);
+		PrintElementStat(&sum_stat, record_header, print_record, topN, do_tag, quiet, pipe_output, csv_output);
 	} 
 
 	if ( !quiet ) {
 		if ( csv_output ) {
 			PrintSummary(&sum_stat, plain_numbers, csv_output);
 		} else if ( !wfile ) {
-			if (do_anonymize)
-				printf("IP addresses anonymized\n");
+			if (IsAnonymized())
+				printf("IP addresses anonymised\n");
 			PrintSummary(&sum_stat, plain_numbers, csv_output);
  			printf("Time window: %s\n", TimeString(t_first_flow, t_last_flow));
 			printf("Total flows processed: %u, Blocks skipped: %u, Bytes read: %llu\n", 

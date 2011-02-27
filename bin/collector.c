@@ -297,24 +297,24 @@ int next_slot = fs->extension_map_list.next_free;
 	}
 
 	// sanity check for buffer size
-	bsize = (pointer_addr_t)fs->nffile.writeto - (pointer_addr_t)fs->nffile.block_header;
+	bsize = (pointer_addr_t)fs->nffile->writeto - (pointer_addr_t)fs->nffile->block_header;
 	// at least space for the map size is required
 	if ( bsize >= (BUFFSIZE - map->size )  ) {
 		syslog(LOG_WARNING,"AddExtensionMap: Outputbuffer full. Flush buffer but have to skip records.");
 		return 0;
 	}
 
-	if ( !CheckBufferSpace(&(fs->nffile), map->size) ) {
+	if ( !CheckBufferSpace(fs->nffile, map->size) ) {
 		// fishy! - should never happen. maybe disk full?
 		syslog(LOG_ERR,"AddExtensionMap: output buffer size error. Abort record processing");
 		return 0;
 	}
 
-	memcpy(fs->nffile.writeto, (void *)map, map->size);
-	fs->nffile.writeto += map->size;
+	memcpy(fs->nffile->writeto, (void *)map, map->size);
+	fs->nffile->writeto += map->size;
 
-	fs->nffile.block_header->size += map->size;
-	fs->nffile.block_header->NumRecords++;
+	fs->nffile->block_header->size += map->size;
+	fs->nffile->block_header->NumRecords++;
 
 	return 1;
 
@@ -326,17 +326,17 @@ int i;
     for ( i=0; i<fs->extension_map_list.next_free; i++ ) {
         extension_map_t *map = fs->extension_map_list.maps[i];
 
-        if ( !CheckBufferSpace(&(fs->nffile), map->size) ) {
+        if ( !CheckBufferSpace(fs->nffile, map->size) ) {
             // fishy! - should never happen. maybe disk full?
             syslog(LOG_ERR,"FlushExtensionMaps: output buffer size error. Abort record processing");
             return;
         }
 
-        memcpy(fs->nffile.writeto, (void *)map, map->size);
+        memcpy(fs->nffile->writeto, (void *)map, map->size);
 
-        fs->nffile.writeto += map->size;
-        fs->nffile.block_header->NumRecords++;
-        fs->nffile.block_header->size += map->size;
+        fs->nffile->writeto += map->size;
+        fs->nffile->block_header->NumRecords++;
+        fs->nffile->block_header->size += map->size;
     }
 
 } // End of FlushExtensionMaps

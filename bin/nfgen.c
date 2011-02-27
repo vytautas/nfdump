@@ -173,20 +173,11 @@ static void UpdateRecord(master_record_t *record) {
 
 int main( int argc, char **argv ) {
 int i, c;
-file_header_t		*file_header;
 master_record_t		record;
-nffile_t			nffile;
-size_t				len;
-void				*records;
+nffile_t			*nffile;
+char				*string;
 
 	when = ISO2UNIX(strdup("200407111030"));
-	// Init vars
-	nffile.block_header = NULL;
-	nffile.writeto		= NULL;
-	nffile.file_blocks 	= 0;
-	nffile.compress 	= 0;
-	nffile.wfd			= 0;
-
 	while ((c = getopt(argc, argv, "h")) != EOF) {
 		switch(c) {
 			case 'h':
@@ -236,36 +227,13 @@ void				*records;
 	}
 	memset((void *)&record, 0, sizeof(record));
 
-	nffile.block_header = (data_block_header_t *)malloc(sizeof(data_block_header_t) + BUFFSIZE);
-	if ( !nffile.block_header ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+	nffile = OpenNewFile("-", NULL, 0, 0, &string);
+	if ( !nffile ) {
+		fprintf(stderr, "%s\n", string);
 		exit(255);
 	}
-	nffile.block_header->NumRecords = 0;
-	nffile.block_header->pad 		= 0;
-	nffile.block_header->size 		= 0;
-	nffile.block_header->id 		= DATA_BLOCK_TYPE_2;
-	nffile.wfd						= STDOUT_FILENO;
-	nffile.writeto 					= records = (void *)((pointer_addr_t)nffile.block_header + sizeof(data_block_header_t));
-	
-	// initialize file header and dummy stat record
-	len = sizeof(file_header_t) + sizeof(stat_record_t);
-	file_header = (file_header_t *)malloc(len);
-	if ( !file_header ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
-		exit(255);
-	}
-	memset((void *)file_header, 0, len);
 
-	file_header->magic 		= MAGIC;
-	file_header->version 	= LAYOUT_VERSION_1;
-	strncpy(file_header->ident, "none", IDENT_SIZE);
-	write(STDOUT_FILENO, (void *)file_header, len) ;
-
-	memcpy(nffile.writeto, (void *)extension_info.map, extension_info.map->size);
-	nffile.writeto += extension_info.map->size;
-	nffile.block_header->NumRecords = 1;
-	nffile.block_header->size 		= extension_info.map->size;
+	AppendToBuffer(nffile, (void *)extension_info.map, extension_info.map->size);
 	
 	record.map_ref = extension_info.map;
 	record.type	= CommonRecordType;
@@ -315,23 +283,23 @@ void				*records;
 
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.2.66", "192.168.170.101");
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	record.dPkts 	 	= 101;
 	record.dOctets 	 	= 102;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.3.66", "192.168.170.102");
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.4.66", "192.168.170.103");
 	record.srcport 	 = 2024;
@@ -342,7 +310,7 @@ void				*records;
 	record.dOctets 	 = 1002;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.5.66", "192.168.170.104");
 	record.srcport 	 	= 3024;
@@ -353,7 +321,7 @@ void				*records;
 	record.dOctets 	 	= 10002;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.6.66", "192.168.170.105");
 	record.srcport 	 	= 4024;
@@ -364,7 +332,7 @@ void				*records;
 	record.dOctets 	 	= 100002;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.7.66", "192.168.170.106");
 	record.srcport 	 	= 5024;
@@ -374,7 +342,7 @@ void				*records;
 	record.dOctets 	 	= 1000002;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.8.66", "192.168.170.107");
 	record.tcp_flags 	= 1;
@@ -383,7 +351,7 @@ void				*records;
 	record.dOctets 	 	= 1001;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.9.66", "192.168.170.108");
 	record.srcport 	 	= 6024;
@@ -393,12 +361,12 @@ void				*records;
 	record.dOctets 	 	= 10000001;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.10.66", "192.168.170.109");
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.11.66", "192.168.170.110");
 	record.srcport 		= 7024;
@@ -408,7 +376,7 @@ void				*records;
 	record.dOctets 	 	= 100000001;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.12.66", "192.168.170.111");
 	record.srcport 	 	= 8024;
@@ -417,7 +385,7 @@ void				*records;
 	record.dOctets 	 	= 1000000001;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.13.66", "192.168.170.112");
 	record.srcport 	 	= 0;
@@ -429,7 +397,7 @@ void				*records;
 	record.dOctets 	 	= 50000;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.160.160.166", "172.160.160.180");
 	record.srcport 	 = 10024;
@@ -439,7 +407,7 @@ void				*records;
 	record.dOctets 	 = 500000;
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET6, "fe80::2110:abcd:1234:0", "fe80::2110:abcd:1235:4321");
 //	SetNextIPaddress(&record,  PF_INET6, "2003:234:aabb::211:24ff:fe80:d01e");
@@ -451,7 +419,7 @@ void				*records;
 	record.dOctets 	 = 15100;
 	fprintf(stderr, "IPv6 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET6, "2001:234:aabb::211:24ff:fe80:d01e", "2001:620::8:203:baff:fe52:38e5");
 	record.srcport 	 = 10240;
@@ -460,24 +428,24 @@ void				*records;
 	record.dOctets 	 = 15000000;
 	fprintf(stderr, "IPv6 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	record.dPkts 	 = 10100000;
 	record.dOctets 	 = 0x100000000LL;
 	fprintf(stderr, "IPv6 32bit packets 64bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	record.dPkts 	 = 0x100000000LL;
 	record.dOctets 	 = 15000000;
 	fprintf(stderr, "IPv6 64bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	record.dOctets 	 = 0x200000000LL;
 	fprintf(stderr, "IPv6 64bit packets 64bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.14.18", "192.168.170.113");
 //	SetNextIPaddress(&record,  PF_INET, "172.72.1.2");
@@ -488,20 +456,20 @@ void				*records;
 	record.dOctets 	 = 0x100000000LL;
 	fprintf(stderr, "IPv4 32bit packets 64bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.15.18", "192.168.170.114");
 	record.dPkts 	 = 0x100000000LL;
 	record.dOctets 	 = 15000000;
 	fprintf(stderr, "IPv4 64bit packets 32bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	SetIPaddress(&record,  PF_INET, "172.16.16.18", "192.168.170.115");
 	record.dOctets 	 = 0x200000000LL;
 	fprintf(stderr, "IPv4 64bit packets 64bit bytes\n");
 	UpdateRecord(&record);
-	PackRecord(&record, &nffile);
+	PackRecord(&record, nffile);
 
 	extension_info.map->ex_id[0] = EX_IO_SNMP_4;
 
@@ -513,14 +481,14 @@ void				*records;
 		i++;
 	}
 
-	memcpy(nffile.writeto, (void *)extension_info.map, extension_info.map->size);
-	nffile.writeto += extension_info.map->size;
-	nffile.block_header->NumRecords++;
-	nffile.block_header->size 		+= extension_info.map->size;
+	memcpy(nffile->writeto, (void *)extension_info.map, extension_info.map->size);
+	nffile->writeto += extension_info.map->size;
+	nffile->block_header->NumRecords++;
+	nffile->block_header->size 		+= extension_info.map->size;
 
 	UpdateRecord(&record);
-	fprintf(stderr, "4 bytes interfaces, 2 bytes AS numbers %d %d\n", record.fwd_status, nffile.block_header->NumRecords);
-	PackRecord(&record, &nffile);
+	fprintf(stderr, "4 bytes interfaces, 2 bytes AS numbers %d %d\n", record.fwd_status, nffile->block_header->NumRecords);
+	PackRecord(&record, nffile);
 
 	extension_info.map->ex_id[0] = EX_IO_SNMP_2;
 	extension_info.map->ex_id[1] = EX_AS_4;
@@ -533,14 +501,14 @@ void				*records;
 		i++;
 	}
 
-	memcpy(nffile.writeto, (void *)extension_info.map, extension_info.map->size);
-	nffile.writeto += extension_info.map->size;
-	nffile.block_header->NumRecords++;
-	nffile.block_header->size 		+= extension_info.map->size;
+	memcpy(nffile->writeto, (void *)extension_info.map, extension_info.map->size);
+	nffile->writeto += extension_info.map->size;
+	nffile->block_header->NumRecords++;
+	nffile->block_header->size 		+= extension_info.map->size;
 
 	UpdateRecord(&record);
-	fprintf(stderr, "2 bytes interfaces, 4 bytes AS numbers %d %d\n", record.fwd_status, nffile.block_header->NumRecords);
-	PackRecord(&record, &nffile);
+	fprintf(stderr, "2 bytes interfaces, 4 bytes AS numbers %d %d\n", record.fwd_status, nffile->block_header->NumRecords);
+	PackRecord(&record, nffile);
 
 	extension_info.map->ex_id[0] = EX_IO_SNMP_4;
 
@@ -552,17 +520,17 @@ void				*records;
 		i++;
 	}
 
-	memcpy(nffile.writeto, (void *)extension_info.map, extension_info.map->size);
-	nffile.writeto += extension_info.map->size;
-	nffile.block_header->NumRecords++;
-	nffile.block_header->size 		+= extension_info.map->size;
+	memcpy(nffile->writeto, (void *)extension_info.map, extension_info.map->size);
+	nffile->writeto += extension_info.map->size;
+	nffile->block_header->NumRecords++;
+	nffile->block_header->size 		+= extension_info.map->size;
 
 	UpdateRecord(&record);
-	fprintf(stderr, "4 bytes interfaces, 4 bytes AS numbers %d %d\n", record.fwd_status, nffile.block_header->NumRecords);
-	PackRecord(&record, &nffile);
+	fprintf(stderr, "4 bytes interfaces, 4 bytes AS numbers %d %d\n", record.fwd_status, nffile->block_header->NumRecords);
+	PackRecord(&record, nffile);
 
-	if ( nffile.block_header->NumRecords ) {
-		if ( WriteBlock(&nffile) <= 0 ) {
+	if ( nffile->block_header->NumRecords ) {
+		if ( WriteBlock(nffile) <= 0 ) {
 			fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
 		} 
 	}

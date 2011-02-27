@@ -62,7 +62,6 @@
 #include "netflow_v5_v7.h"
 #include "nf_common.h"
 #include "util.h"
-#include "panonymizer.h"
 #include "nflowcache.h"
 #include "nfstat.h"
 
@@ -332,11 +331,11 @@ static inline StatRecord_t *stat_hash_insert(uint64_t *value, uint8_t prot, int 
 
 static void Expand_StatTable_Blocks(int hash_num);
 
-static void PrintStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int anon, int order_proto, int tag);
+static void PrintStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int order_proto, int tag);
 
-static void PrintPipeStatLine(StatRecord_t *StatData, int type, int anon, int order_proto, int tag);
+static void PrintPipeStatLine(StatRecord_t *StatData, int type, int order_proto, int tag);
 
-static void PrintCvsStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int anon, int order_proto, int tag);
+static void PrintCvsStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int order_proto, int tag);
 
 static void Create_topN_FlowStat(SortElement_t **topN_lists, int order, int topN, uint32_t *count );
 
@@ -864,7 +863,7 @@ int	j, i;
 
 } // End of AddStat
 
-static void PrintStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int anon, int order_proto, int tag) {
+static void PrintStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int order_proto, int tag) {
 char		proto[16], valstr[40], datestr[64], flows_str[32], byte_str[32], packets_str[32], pps_str[32], bps_str[32];
 char tag_string[2];
 double		duration, flows_percent, packets_percent, bytes_percent;
@@ -883,12 +882,6 @@ struct tm	*tbuff;
 		case IS_IPADDR:
 			tag_string[0] = tag ? TAG_CHAR : '\0';
 			if ( (StatData->record_flags & 0x1) != 0 ) { // IPv6
-				if ( anon ) {
-					uint64_t anon_ip[2];
-					anonymize_v6(StatData->stat_key, anon_ip);
-					StatData->stat_key[0] = anon_ip[0];
-					StatData->stat_key[1] = anon_ip[1];
-				}
 				StatData->stat_key[0] = htonll(StatData->stat_key[0]);
 				StatData->stat_key[1] = htonll(StatData->stat_key[1]);
 				inet_ntop(AF_INET6, StatData->stat_key, valstr, sizeof(valstr));
@@ -896,11 +889,8 @@ struct tm	*tbuff;
 					condense_v6(valstr);
 	
 			} else {	// IPv4
-				uint32_t	ipv4 = StatData->stat_key[1];
-				if ( anon ) {
-					ipv4 = anonymize(ipv4);
-				}
-				ipv4 = htonl(ipv4);
+				uint32_t	ipv4;
+				ipv4 = htonl(StatData->stat_key[1]);
 				inet_ntop(AF_INET, &ipv4, valstr, sizeof(valstr));
 			}
 			break;
@@ -976,7 +966,7 @@ struct tm	*tbuff;
 
 } // End of PrintStatLine
 
-static void PrintPipeStatLine(StatRecord_t *StatData, int type, int anon, int order_proto, int tag) {
+static void PrintPipeStatLine(StatRecord_t *StatData, int type, int order_proto, int tag) {
 double		duration;
 uint32_t	pps, bps, bpp;
 uint32_t	sa[4];
@@ -986,21 +976,11 @@ int			af;
 	af = AF_UNSPEC;
 	if ( type == IS_IPADDR ) {
 		if ( (StatData->record_flags & 0x1) != 0 ) { // IPv6
-			if ( anon ) {
-				uint64_t anon_ip[2];
-				anonymize_v6(StatData->stat_key, anon_ip);
-				StatData->stat_key[0] = anon_ip[0];
-				StatData->stat_key[1] = anon_ip[1];
-			}
 			StatData->stat_key[0] = htonll(StatData->stat_key[0]);
 			StatData->stat_key[1] = htonll(StatData->stat_key[1]);
 			af = PF_INET6;
 
 		} else {	// IPv4
-			uint32_t	ipv4 = StatData->stat_key[1];
-			if ( anon ) {
-				StatData->stat_key[1] = anonymize(ipv4);
-			}
 			af = PF_INET;
 		}
 		// Make sure Endian does not screw us up
@@ -1043,7 +1023,7 @@ int			af;
 
 } // End of PrintPipeStatLine
 
-static void PrintCvsStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int anon, int order_proto, int tag) {
+static void PrintCvsStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int order_proto, int tag) {
 char		proto[16], valstr[40], datestr1[64], datestr2[64];
 char tag_string[2];
 double		duration, flows_percent, packets_percent, bytes_percent;
@@ -1062,22 +1042,13 @@ struct tm	*tbuff;
 		case IS_IPADDR:
 			tag_string[0] = tag ? TAG_CHAR : '\0';
 			if ( (StatData->record_flags & 0x1) != 0 ) { // IPv6
-				if ( anon ) {
-					uint64_t anon_ip[2];
-					anonymize_v6(StatData->stat_key, anon_ip);
-					StatData->stat_key[0] = anon_ip[0];
-					StatData->stat_key[1] = anon_ip[1];
-				}
 				StatData->stat_key[0] = htonll(StatData->stat_key[0]);
 				StatData->stat_key[1] = htonll(StatData->stat_key[1]);
 				inet_ntop(AF_INET6, StatData->stat_key, valstr, sizeof(valstr));
 	
 			} else {	// IPv4
-				uint32_t	ipv4 = StatData->stat_key[1];
-				if ( anon ) {
-					ipv4 = anonymize(ipv4);
-				}
-				ipv4 = htonl(ipv4);
+				uint32_t	ipv4;
+				ipv4 = htonl(StatData->stat_key[1]);
 				inet_ntop(AF_INET, &ipv4, valstr, sizeof(valstr));
 			}
 			break;
@@ -1160,7 +1131,7 @@ struct tm	*tbuff;
 
 } // End of PrintCvsStatLine
 
-void PrintFlowTable(printer_t print_record, uint32_t limitflows, int date_sorted, int anon, int tag, int GuessDir) {
+void PrintFlowTable(printer_t print_record, uint32_t limitflows, int date_sorted, int tag, int GuessDir) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 SortElement_t 		*SortList;
@@ -1219,7 +1190,7 @@ char				*string;
 		if ( limitflows && limitflows < maxindex )
 			maxindex = limitflows;
 		for ( i = 0; i < maxindex; i++ ) {
-			master_record_t	flow_record;
+			master_record_t	*flow_record;
 			common_record_t *raw_record;
 			int map_id;
 
@@ -1227,24 +1198,25 @@ char				*string;
 			raw_record = &(r->flowrecord);
 			map_id = r->map_ref->map_id;
 
-			ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], &flow_record);
-			flow_record.dPkts 		= r->counter[INPACKETS];
-			flow_record.dOctets 	= r->counter[INBYTES];
-			flow_record.out_pkts 	= r->counter[OUTPACKETS];
-			flow_record.out_bytes 	= r->counter[OUTBYTES];
-			flow_record.aggr_flows 	= r->counter[FLOWS];
+			flow_record = &(extension_map_list.slot[map_id]->master_record);
+			ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], flow_record);
+			flow_record->dPkts 		= r->counter[INPACKETS];
+			flow_record->dOctets 	= r->counter[INBYTES];
+			flow_record->out_pkts 	= r->counter[OUTPACKETS];
+			flow_record->out_bytes 	= r->counter[OUTBYTES];
+			flow_record->aggr_flows 	= r->counter[FLOWS];
 			
 			// apply IP mask from aggregation, to provide a pretty output
 			if ( FlowTable->has_masks ) {
-				flow_record.v6.srcaddr[0] &= FlowTable->IPmask[0];
-				flow_record.v6.srcaddr[1] &= FlowTable->IPmask[1];
-				flow_record.v6.dstaddr[0] &= FlowTable->IPmask[2];
-				flow_record.v6.dstaddr[1] &= FlowTable->IPmask[3];
+				flow_record->v6.srcaddr[0] &= FlowTable->IPmask[0];
+				flow_record->v6.srcaddr[1] &= FlowTable->IPmask[1];
+				flow_record->v6.dstaddr[0] &= FlowTable->IPmask[2];
+				flow_record->v6.dstaddr[1] &= FlowTable->IPmask[3];
 			}
 
-			if ( GuessDir && ( flow_record.srcport < 1024 && flow_record.dstport > 1024 ) )
-				SwapFlow(&flow_record);
-			print_record((void *)&flow_record, &string, anon, tag);
+			if ( GuessDir && ( flow_record->srcport < 1024 && flow_record->dstport > 1024 ) )
+				SwapFlow(flow_record);
+			print_record((void *)flow_record, &string, tag);
 			printf("%s\n", string);
 		}
 
@@ -1298,7 +1270,7 @@ char				*string;
 
 				if ( GuessDir && ( flow_record->srcport < 1024 && flow_record->dstport > 1024 ) )
 					SwapFlow(flow_record);
-				print_record((void *)flow_record, &string, anon, tag);
+				print_record((void *)flow_record, &string, tag);
 				printf("%s\n", string);
 
 				c++;
@@ -1309,7 +1281,7 @@ char				*string;
 
 } // End of PrintFlowTable
 
-void PrintFlowStat(char *record_header, printer_t print_record, int topN, int anon, int tag, int quiet, int cvs_output) {
+void PrintFlowStat(char *record_header, printer_t print_record, int topN, int tag, int quiet, int cvs_output) {
 hash_FlowTable *FlowTable;
 SortElement_t 	*topN_flow_list[NumOrders];
 uint32_t		numflows;
@@ -1368,7 +1340,7 @@ char			*string;
 				if ( FlowTable->apply_netbits )
 					ApplyNetMaskBits(&flow_record, FlowTable->apply_netbits);
 
-				print_record((void *)&flow_record, &string, anon, tag);
+				print_record((void *)&flow_record, &string, tag);
 				printf("%s\n", string);
 			}
 			printf("\n");
@@ -1382,7 +1354,7 @@ char			*string;
 
 } // End of PrintFlowStat
 
-void PrintElementStat(stat_record_t	*sum_stat, char *record_header, printer_t print_record, int topN, int anon, int tag, int quiet, int pipe_output, int cvs_output) {
+void PrintElementStat(stat_record_t	*sum_stat, char *record_header, printer_t print_record, int topN, int tag, int quiet, int pipe_output, int cvs_output) {
 SortElement_t	*topN_element_list;
 uint32_t		numflows, maxindex;
 int32_t 		i, j, hash_num, order_index, order_bit;
@@ -1427,13 +1399,13 @@ int32_t 		i, j, hash_num, order_index, order_bit;
 					// Again - ugly output formating - needs to be cleand up
 					if ( pipe_output ) 
 						PrintPipeStatLine((StatRecord_t *)topN_element_list[i].record, type, 
-							anon, StatRequest[hash_num].order_proto, tag);
+							StatRequest[hash_num].order_proto, tag);
 					else if ( cvs_output ) 
 						PrintCvsStatLine(sum_stat, (StatRecord_t *)topN_element_list[i].record, type, 
-							anon, StatRequest[hash_num].order_proto, tag);
+							StatRequest[hash_num].order_proto, tag);
 					else
 						PrintStatLine(sum_stat, (StatRecord_t *)topN_element_list[i].record, 
-							type, anon, StatRequest[hash_num].order_proto, tag);
+							type, StatRequest[hash_num].order_proto, tag);
 				}
 				free((void *)topN_element_list);
 				printf("\n");

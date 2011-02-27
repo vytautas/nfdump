@@ -27,20 +27,20 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
  *  POSSIBILITY OF SUCH DAMAGE.
  *  
- *  $Author: haag $
+ *  $Author: peter $
  *
- *  $Id: version.h 69 2010-09-09 07:17:43Z haag $
+ *  $Id: version.h 19 2011-01-09 11:28:32Z peter $
  *
- *  $LastChangedRevision: 69 $
+ *  $LastChangedRevision: 19 $
  *	
  *
  */
-
+ 
 #ifndef _VERSION_H
 #define _VERSION_H 1
-
+ 
 const char *nfdump_version = VERSION;
 
-const char *nfdump_date	   = "$LastChangedDate: 2010-03-05 07:50:35 +0100 (Fri, 05 Mar 2010) $";
+const char *nfdump_date	   = "$LastChangedDate: 2011-01-09 12:28:32 +0100 (Sun, 09 Jan 2011) $";
 
 #endif //_VERSION_H

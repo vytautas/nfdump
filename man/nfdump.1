@@ -363,20 +363,6 @@ For each defined output format except \-o fmt:<format> an IPv6 long output forma
 .RE
 .PD
 .TP 3
-.B -K \fIkey
-Anonymize all IP addresses using the CryptoPAn (Cryptography\-based  
-Prefix\-preserving Anonymization) module. The key is used to 
-initialize the Rijndael cipher. \fIkey\fR is either a 32 character 
-string, or a 64 hex digit string starting with 0x. Anonymizing takes
-place \fIafter\fR applying the flow filter, but before printing the flow
-or writing the flow to a file.
-.P
-.RS 3
-See http://www.cc.gatech.edu/computing/Telecomm/cryptopan/ for 
-more information about CryptoPAn.
-.RE
-.PD
-.TP 3
 .B -q
 Suppress the header line and the statistics at the bottom.
 .TP 3

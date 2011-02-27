@@ -88,8 +88,6 @@ extern char *nf_error;
 
 static void ZeroStat(void);
 
-static int WriteSTDOUTFileheader(void);
-
 /* function definitions */
 
 static void ZeroStat() {
@@ -141,7 +139,7 @@ void SumStatRecords(stat_record_t *s1, stat_record_t *s2) {
 		 s2->msec_last > s1->msec_last ) 
 			s1->msec_last = s2->msec_last;
 
-} // End of AddStatRecords
+} // End of SumStatRecords
 
 
 char *GetIdent(void) {
@@ -150,13 +148,20 @@ char *GetIdent(void) {
 
 } // End of GetIdent
 
+int IsCompressed(void) {
+	return file_compressed;
+} // End of IsCompressed
+
+int IsAnonymized(void) {
+	return (FileHeader.flags & FLAG_ANONYMIZED);
+} // End of IsCompressed
+
 static int LZO_initialize(void) {
 
 	if (lzo_init() != LZO_E_OK) {
 			// this usually indicates a compiler bug - try recompiling 
 			// without optimizations, and enable `-DLZO_DEBUG' for diagnostics
 			snprintf(error_string, ERR_SIZE,"Compression lzo_init() failed.\n");
-			error_string[ERR_SIZE-1] = 0;
 			return 0;
 	} 
 	lzo_buff = malloc(BUFFSIZE+ sizeof(data_block_header_t));
@@ -374,114 +379,158 @@ void PrintStat(stat_record_t *s) {
 	printf("Sequence failures: %u\n", s->sequence_failure);
 } // End of PrintStat
 
-int InitExportFile(char *filename, int compress, nffile_t *nffile ) {
-char 				*string;
+static void InitFile(nffile_t *nffile) {
+
+	// Init header
+	nffile->file_header->magic 	   = MAGIC;
+	nffile->file_header->version   = LAYOUT_VERSION_1;
+	nffile->file_header->flags 	   = 0;
+	nffile->file_header->NumBlocks = 0;
 
 	// Init vars
-	nffile->block_header = NULL;
 	nffile->writeto		 = NULL;
-	nffile->file_blocks  = 0;
-	nffile->compress 	 = compress;
 	nffile->wfd			 = 0;
 
-	if ( !filename ) 
-		return 0;
-
-	if ( strcmp(filename, "-") == 0 ) { // output to stdout
-		if ( !WriteSTDOUTFileheader() ) {
-			return 0;
-		}
-		nffile->wfd = STDOUT_FILENO;
-
-	} else {
-		nffile->wfd = OpenNewFile(filename, &string, nffile->compress);
-		if ( nffile->wfd < 0 ) {
-			if ( string != NULL )
-				fprintf(stderr, "%s\n", string);
-			return 0;
-		}
-	}
-
-	// init all nffile vars
-	nffile->block_header = malloc(BUFFSIZE + sizeof(data_block_header_t));
-	if ( !nffile->block_header ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		return 0;
-	}
+	// Init block header
 	nffile->block_header->size 		 = 0;
 	nffile->block_header->NumRecords = 0;
 	nffile->block_header->id		 = DATA_BLOCK_TYPE_2;
 	nffile->block_header->pad		 = 0;
 	nffile->writeto = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t));
 
-	return 1;
-} // End of InitExportFile
+} // End of InitFile
 
-int OpenNewFile(char *filename, char **err, int compressed) {
-file_header_t	*file_header;
-size_t			len;
-int				nffd;
+nffile_t *NewFile(void) {
+nffile_t *nffile;
 
-	*err = NULL;
-	nffd = open(filename, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH );
-	if ( nffd < 0 ) {
-		snprintf(error_string, ERR_SIZE, "Failed to open file %s: '%s'" , filename, strerror(errno));
+	// Create struct
+	nffile = calloc(1, sizeof(nffile_t));
+	if ( !nffile ) {
+		snprintf(error_string, ERR_SIZE, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		error_string[ERR_SIZE-1] = 0;
-		*err = error_string;
-		return -1;
+		return NULL;
 	}
 
-	len = sizeof(file_header_t) + sizeof(stat_record_t);
-	file_header = (file_header_t *)malloc(len);
-	memset((void *)file_header, 0, len);
+	// Init file header
+	nffile->file_header = calloc(1, sizeof(file_header_t));
+	if ( !nffile->file_header ) {
+		snprintf(error_string, ERR_SIZE, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		error_string[ERR_SIZE-1] = 0;
+		return NULL;
+	}
 
-	/* magic set, version = 0 => file open for writing */
-	file_header->magic = MAGIC;
+	// init output data buffer
+	nffile->block_header = malloc(BUFFSIZE + sizeof(data_block_header_t));
+	if ( !nffile->block_header ) {
+		snprintf(error_string, ERR_SIZE, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		error_string[ERR_SIZE-1] = 0;
+		return NULL;
+	}
 
-	if ( compressed ) {
-		if ( !lzo_initialized && !LZO_initialize() ) {
-				*err = error_string;
-				close(nffd);
-				return -1;
+	return nffile;
+
+} // End of NewFile
+
+nffile_t *DisposeFile(nffile_t *nffile) {
+	free(nffile->file_header);
+	free(nffile->block_header);
+	free(nffile);
+	return NULL;
+} // End of 
+
+nffile_t *OpenNewFile(char *filename, nffile_t *nffile, int compressed, int anonymized, char **err) {
+stat_record_t	stat_record;
+size_t			len;
+int 			flags;
+
+	// Allocate new struct if not given
+	if ( nffile == NULL ) {
+		nffile = NewFile();
+		if ( nffile == NULL ) {
+			*err = error_string;
+			return NULL;
 		}
-		file_header->flags |= FLAG_COMPRESSED;
+	}
+
+	InitFile(nffile);
+
+	flags = compressed ? FLAG_COMPRESSED : 0;
+	if ( anonymized ) 
+		SetFlag(flags, FLAG_ANONYMIZED);
+
+	nffile->file_header->flags 	   = flags;
+
+	if ( strcmp(filename, "-") == 0 ) { // output to stdout
+		nffile->wfd = STDOUT_FILENO;
+	} else {
+		nffile->wfd = open(filename, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH );
+		if ( nffile->wfd < 0 ) {
+			snprintf(error_string, ERR_SIZE, "Failed to open file %s: '%s'" , filename, strerror(errno));
+			error_string[ERR_SIZE-1] = 0;
+			*err = error_string;
+			return NULL;
+		}
+	}
+
+	memset((void *)&stat_record, 0, sizeof(stat_record));
+
+	if ( TestFlag(flags, FLAG_COMPRESSED) ) {
+		if ( !lzo_initialized && !LZO_initialize() ) {
+			snprintf(error_string, ERR_SIZE, "Failed to initialize compression");
+			*err = error_string;
+			close(nffile->wfd);
+			return NULL;
+		}
     }
 
-	if ( write(nffd, (void *)file_header, len) < len ) {
+	len = sizeof(file_header_t);
+	if ( write(nffile->wfd, (void *)nffile->file_header, len) < len ) {
 		snprintf(error_string, ERR_SIZE, "Failed to write file header: '%s'" , strerror(errno));
 		error_string[ERR_SIZE-1] = 0;
 		*err = error_string;
-		close(nffd);
-		return -1;
+		close(nffile->wfd);
+		return NULL;
 	}
 
-	return nffd;
+	// write empty stat record - ist updated when file gets closed
+	len = sizeof(stat_record_t);
+	if ( write(nffile->wfd, (void *)&stat_record, len) < len ) {
+		snprintf(error_string, ERR_SIZE, "Failed to write file header: '%s'" , strerror(errno));
+		error_string[ERR_SIZE-1] = 0;
+		*err = error_string;
+		close(nffile->wfd);
+		return NULL;
+	}
+
+	return nffile;
 
 } /* End of OpenNewFile */
 
-void CloseUpdateFile(int fd, stat_record_t *stat_record, uint32_t record_count, char *ident, int compressed, char **err ) {
+void CloseUpdateFile(nffile_t *nffile, stat_record_t *stat_record, char *ident, char **err ) {
 file_header_t	file_header;
 
 	*err = NULL;
-
-	file_header.magic 		= MAGIC;
-	file_header.version		= LAYOUT_VERSION_1;
-	file_header.flags		= compressed ? FLAG_COMPRESSED : 0;
-	file_header.NumBlocks	= record_count;
-	strncpy(file_header.ident, ident ? ident : "unknown" , IdentLen);
-	file_header.ident[IdentLen - 1] = 0;
-
-	if ( lseek(fd, 0, SEEK_SET) < 0 ) {
-		snprintf(error_string, ERR_SIZE,"lseek failed: '%s'\n" , strerror(errno));
-		error_string[ERR_SIZE-1] = 0;
-		*err = error_string;
-		close(fd);
-		return;
+	if ( lseek(nffile->wfd, 0, SEEK_SET) < 0 ) {
+		// lseek on stdout works if output redirected:
+		// e.g. -w - > outfile
+		// but fails on pipe e.g. -w - | ./nfdump .... 
+		if ( nffile->wfd == STDOUT_FILENO ) {
+			return;
+		} else {
+			snprintf(error_string, ERR_SIZE,"lseek failed: '%s'\n" , strerror(errno));
+			error_string[ERR_SIZE-1] = 0;
+			*err = error_string;
+			close(nffile->wfd);
+			return;
+		}
 	}
 
-	write(fd, (void *)&file_header, sizeof(file_header_t));
-	write(fd, (void *)stat_record, sizeof(stat_record_t));
-	if ( close(fd) < 0 ) {
+	strncpy(nffile->file_header->ident, ident ? ident : "unknown" , IdentLen);
+	file_header.ident[IdentLen - 1] = 0;
+
+	write(nffile->wfd, (void *)nffile->file_header, sizeof(file_header_t));
+	write(nffile->wfd, (void *)stat_record, sizeof(stat_record_t));
+	if ( close(nffile->wfd) < 0 ) {
 		snprintf(error_string, ERR_SIZE,"close failed: '%s'" , strerror(errno));
 		error_string[ERR_SIZE-1] = 0;
 		*err = error_string;
@@ -607,7 +656,7 @@ unsigned char __LZO_MMODEL *out;
 lzo_uint in_len;
 lzo_uint out_len;
 
-	if ( !nffile->compress ) {
+	if ( !TestFlag(nffile->file_header->flags, FLAG_COMPRESSED) ) {
 		return write(nffile->wfd, (void *)nffile->block_header, sizeof(data_block_header_t) + nffile->block_header->size);
 	} 
 
@@ -689,9 +738,9 @@ void		*p = (void *)input_record;
 } // End of ExpandRecord_v1
 
 void UnCompressFile(char * filename) {
-int 			i, rfd;
+int 			i, rfd, flags, compressed, anonymized;
 ssize_t			ret;
-nffile_t		nffile;
+nffile_t		*nffile;
 stat_record_t 	*stat_ptr;
 char			*string;
 char 			outfile[MAXPATHLEN];
@@ -707,59 +756,56 @@ void			*buff_ptr;
 	snprintf(outfile, MAXPATHLEN, "%s-tmp", filename);
 	outfile[MAXPATHLEN-1] = '\0';
 
-	// allocate output buffer 
-	nffile.block_header = (data_block_header_t *)malloc(BUFFSIZE+ sizeof(data_block_header_t));
-	if ( !nffile.block_header ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+	flags = FileHeader.flags;
+	if ( file_compressed ) {
+		printf("Uncompress file .. \n");
+		compressed = 0;
+	} else {
+		printf("Compress file .. \n");
+		compressed = 1;
+	}
+	anonymized = IsAnonymized();
+
+	// allocate output file
+	nffile = OpenNewFile(outfile, NULL, compressed, anonymized, &string);
+	if ( !nffile ) {
+		fprintf(stderr, "%s\n", string);
 		close(rfd);
 		return;
 	}
 
-	buff_ptr	 = (void *)((pointer_addr_t)nffile.block_header + sizeof(data_block_header_t));
-
-	nffile.compress = file_compressed ? 0 : 1;
-
-	nffile.wfd = OpenNewFile(outfile, &string, nffile.compress);
-	if ( nffile.wfd < 0 ) {
-        fprintf(stderr, "%s", string);
-        return;
-    }
-
-	if ( nffile.compress )
-		printf("Compress file .. \n");
-	else
-		printf("Uncompress file .. \n");
+	buff_ptr	 = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t));
 
 	for ( i=0; i < FileHeader.NumBlocks; i++ ) {
-		ret = ReadBlock(rfd, nffile.block_header, buff_ptr, &string);
+		ret = ReadBlock(rfd, nffile->block_header, buff_ptr, &string);
 		if ( ret < 0 ) {
 			fprintf(stderr, "Error while reading data block. Abort.\n");
 			close(rfd);
-			close(nffile.wfd);
+			close(nffile->wfd);
 			unlink(outfile);
 			return;
 		}
-		if ( WriteBlock(&nffile) <= 0 ) {
+		if ( WriteBlock(nffile) <= 0 ) {
 			fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
 			close(rfd);
-			close(nffile.wfd);
+			close(nffile->wfd);
 			unlink(outfile);
 			return;
 		}
 	}
 
 	close(rfd);
-	CloseUpdateFile(nffile.wfd, stat_ptr, FileHeader.NumBlocks, GetIdent(), nffile.compress, &string );
+	CloseUpdateFile(nffile, stat_ptr, GetIdent(), &string );
 	if ( string != NULL ) {
 		fprintf(stderr, "%s\n", string);
-		close(nffile.wfd);
+		close(nffile->wfd);
 		unlink(outfile);
-		return;
 	} else {
-		close(nffile.wfd);
+		close(nffile->wfd);
 		unlink(filename);
 		rename(outfile, filename);
 	}
+	DisposeFile(nffile);
 
 } // End of UnCompressFile
 
@@ -813,30 +859,6 @@ ssize_t	ret;
 	close(fd);
 
 } // End of QueryFile
-
-static int WriteSTDOUTFileheader(void) {
-file_header_t	*file_header;
-size_t			len;
-
-	len = sizeof(file_header_t) + sizeof(stat_record_t);
-	file_header = (file_header_t *)calloc(1,len);
-	if ( !file_header ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		return 0;
-	}
-
-	// we do not compress data on stdout
-	file_header->magic 		= MAGIC;
-	file_header->version 	= LAYOUT_VERSION_1;
-	strncpy(file_header->ident, "none", sizeof(file_header->ident));
-	if ( write(STDOUT_FILENO, (void *)file_header, len) < 0 ) {
-		fprintf(stderr, "write() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		return 0;
-	} else {
-		return 1;
-	}
-
-} // End of WriteSTDOUTFileheader
 
 #ifdef COMPAT15
 /*

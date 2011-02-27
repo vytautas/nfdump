@@ -1,3 +1,12 @@
+2011-02-05
+- Fix SysUptime 32bit overflow in v5 header
+- Add fix for strange first/last swap reported by some users.
+
+2011-01-09 v1.6.3 
+- Fix extension size bug
+- Move IP anonymisation to separate binary nfanon
+- Fix initialise bug of -o fmt: and not available fields
+
 2010-09-09 v1.6.2 
 - released
 - fixes some sflow bugs in sfcapd

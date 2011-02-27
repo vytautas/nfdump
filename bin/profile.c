@@ -123,9 +123,10 @@ char 	*p, *filter, *subdir, *wfile, *ofile, *rrdfile, *source_filter;
 char	path[MAXPATHLEN];
 int		ffd, ret;
 size_t	filter_size;
-nffile_t nffile;
+nffile_t *nffile;
 
 	ofile = wfile = NULL;
+	nffile = NULL;
 
 	/* 
 	 * Compile the complete filter:
@@ -257,11 +258,10 @@ nffile_t nffile;
 		exit(255);
 	}
 
-	memset((void *)&nffile, 0, sizeof(nffile));
-
 	// check for subdir hierarchy
 	subdir = NULL;
 	if ( (profile_param->profiletype & 4) ==  0  ) { // no shadow profile
+		char *string;
 		int is_alert = (profile_param->profiletype & 8) ==  8;
 		if ( !is_alert && subdir_index && strlen(filename) == 19 && (strncmp(filename, "nfcapd.", 7) == 0) ) {
 			char *p = &filename[7];	// points to ISO timstamp in filename
@@ -304,8 +304,11 @@ nffile_t nffile;
 
 		ofile = strdup(path);
 	
-		if ( !InitExportFile(path, compress, &nffile) ) 
+		nffile = OpenNewFile(path, NULL, compress, 0, &string);
+		if ( !nffile ) {
+			LogError("%s", string);
 			return;
+		}
 
 	} 
 
@@ -358,8 +361,8 @@ int ret, update_ok;
 
 	for ( num = 0; num < num_channels; num++ ) {
 		if ( profile_channels[num].ofile ) {
-			CloseUpdateFile(profile_channels[num].nffile.wfd, &(profile_channels[num].stat_record), 
-			profile_channels[num].nffile.file_blocks, GetIdent(), compress, &s );
+			CloseUpdateFile(profile_channels[num].nffile, &(profile_channels[num].stat_record), GetIdent(), &s );
+			profile_channels[num].nffile = DisposeFile(profile_channels[num].nffile);
 
 			if ( s != NULL ) {
 				LogError("%s\n", s);

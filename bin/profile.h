@@ -56,7 +56,7 @@ typedef struct profile_channel_info_s {
 	char				*wfile;			// final filename
 	char				*rrdfile;		// rrd filename for update
 	char				*dirstat_path;	// pathname for dirstat file
-	nffile_t			nffile;
+	nffile_t			*nffile;
 	stat_record_t		stat_record;
 	int					type;
 	dirstat_t 			*dirstat;

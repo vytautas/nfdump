@@ -53,7 +53,6 @@
 #endif
 
 #include "nffile.h"
-#include "panonymizer.h"
 #include "nf_common.h"
 #include "util.h"
 
@@ -73,7 +72,6 @@ static char **format_list;		// ordered list of all individual strings formating 
 static int	max_format_index	= 0;
 static int	format_index		= 0;
 
-static int		do_anonymize = 0;
 static int		do_tag 		 = 0;
 static int 		long_v6 	 = 0;
 static int		no_scale	 = 0;
@@ -534,7 +532,7 @@ char *Get_fwd_status_name(uint32_t id) {
 
 } // End of Get_fwd_status_name
 
-void format_file_block_header(void *header, char ** s, int anon, int tag) {
+void format_file_block_header(void *header, char ** s, int tag) {
 data_block_header_t *h = (data_block_header_t *)header;
 	
 	snprintf(data_string,STRINGSIZE-1 ,""
@@ -549,8 +547,7 @@ data_block_header_t *h = (data_block_header_t *)header;
 
 } // End of format_file_block_header
 
-void format_file_block_record(void *record, char ** s, int anon, int tag) {
-uint64_t	anon_ip[2];
+void format_file_block_record(void *record, char ** s, int tag) {
 char 		*_s, as[IP_STRING_LEN], ds[IP_STRING_LEN], datestr1[64], datestr2[64], flags_str[16];
 char		s_snet[IP_STRING_LEN], s_dnet[IP_STRING_LEN];
 int			i, id;
@@ -566,15 +563,6 @@ extension_map_t	*extension_map = r->map_ref;
 		uint64_t snet[2];
 		uint64_t dnet[2];
 
-		if ( anon ) {
-			anonymize_v6(r->v6.srcaddr, anon_ip);
-			r->v6.srcaddr[0] = anon_ip[0];
-			r->v6.srcaddr[1] = anon_ip[1];
-
-			anonymize_v6(r->v6.dstaddr, anon_ip);
-			r->v6.dstaddr[0] = anon_ip[0];
-			r->v6.dstaddr[1] = anon_ip[1];
-		}
 		// remember IPs for network 
 		snet[0] = r->v6.srcaddr[0];
 		snet[1] = r->v6.srcaddr[1];
@@ -622,10 +610,6 @@ extension_map_t	*extension_map = r->map_ref;
 
 	} else {	// IPv4
 		uint32_t snet, dnet;
-		if ( anon ) {
-			r->v4.srcaddr = anonymize(r->v4.srcaddr);
-			r->v4.dstaddr = anonymize(r->v4.dstaddr);
-		}
 		snet = r->v4.srcaddr;
 		dnet = r->v4.dstaddr;
 		r->v4.srcaddr = htonl(r->v4.srcaddr);
@@ -729,9 +713,6 @@ extension_map_t	*extension_map = r->map_ref;
 				break;
 			case EX_NEXT_HOP_v4:
 				as[0] = 0;
-				if ( anon ) {
-					r->ip_nexthop.v4 = anonymize(r->ip_nexthop.v4);
-				} 
 				r->ip_nexthop.v4 = htonl(r->ip_nexthop.v4);
 				inet_ntop(AF_INET, &r->ip_nexthop.v4, as, sizeof(as));
 				as[IP_STRING_LEN-1] = 0;
@@ -746,11 +727,6 @@ extension_map_t	*extension_map = r->map_ref;
 			break;
 			case EX_NEXT_HOP_v6:
 				as[0] = 0;
-				if ( anon ) {
-					anonymize_v6(r->ip_nexthop.v6, anon_ip);
-					r->ip_nexthop.v6[0] = anon_ip[0];
-					r->ip_nexthop.v6[1] = anon_ip[1];
-				}
 				r->ip_nexthop.v6[0] = htonll(r->ip_nexthop.v6[0]);
 				r->ip_nexthop.v6[1] = htonll(r->ip_nexthop.v6[1]);
 				inet_ntop(AF_INET6, r->ip_nexthop.v6, as, sizeof(as));
@@ -769,9 +745,6 @@ extension_map_t	*extension_map = r->map_ref;
 			break;
 			case EX_NEXT_HOP_BGP_v4:
 				as[0] = 0;
-				if ( anon ) {
-					r->bgp_nexthop.v4 = anonymize(r->bgp_nexthop.v4);
-				}
 				r->bgp_nexthop.v4 = htonl(r->bgp_nexthop.v4);
 				inet_ntop(AF_INET, &r->bgp_nexthop.v4, as, sizeof(as));
 				as[IP_STRING_LEN-1] = 0;
@@ -786,11 +759,6 @@ extension_map_t	*extension_map = r->map_ref;
 			break;
 			case EX_NEXT_HOP_BGP_v6:
 				as[0] = 0;
-				if ( anon ) {
-					anonymize_v6(r->bgp_nexthop.v6, anon_ip);
-					r->bgp_nexthop.v6[0] = anon_ip[0];
-					r->bgp_nexthop.v6[1] = anon_ip[1];
-				}
 				r->bgp_nexthop.v6[0] = htonll(r->bgp_nexthop.v6[0]);
 				r->bgp_nexthop.v6[1] = htonll(r->bgp_nexthop.v6[1]);
 				inet_ntop(AF_INET6, r->ip_nexthop.v6, as, sizeof(as));
@@ -894,9 +862,6 @@ extension_map_t	*extension_map = r->map_ref;
 			} break;
 			case EX_ROUTER_IP_v4:
 				as[0] = 0;
-				if ( anon ) {
-					r->ip_router.v4 = anonymize(r->ip_router.v4);
-				}
 				r->ip_router.v4 = htonl(r->ip_router.v4);
 				inet_ntop(AF_INET, &r->ip_router.v4, as, sizeof(as));
 				as[IP_STRING_LEN-1] = 0;
@@ -911,11 +876,6 @@ extension_map_t	*extension_map = r->map_ref;
 			break;
 			case EX_ROUTER_IP_v6:
 				as[0] = 0;
-				if ( anon ) {
-					anonymize_v6(r->ip_router.v6, anon_ip);
-					r->ip_router.v6[0] = anon_ip[0];
-					r->ip_router.v6[1] = anon_ip[1];
-				}
 				r->ip_router.v6[0] = htonll(r->ip_router.v6[0]);
 				r->ip_router.v6[1] = htonll(r->ip_router.v6[1]);
 				inet_ntop(AF_INET6, &r->ip_router.v6, as, sizeof(as));
@@ -955,28 +915,14 @@ extension_map_t	*extension_map = r->map_ref;
 
 } // End of format_file_block_record
 
-void flow_record_to_pipe(void *record, char ** s, int anon, int tag) {
-uint64_t	anon_ip[2];
+void flow_record_to_pipe(void *record, char ** s, int tag) {
 uint32_t	sa[4], da[4];
 int			af;
 master_record_t *r = (master_record_t *)record;
 
 	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
-		if ( anon ) {
-			anonymize_v6(r->v6.srcaddr, anon_ip);
-			r->v6.srcaddr[0] = anon_ip[0];
-			r->v6.srcaddr[1] = anon_ip[1];
-
-			anonymize_v6(r->v6.dstaddr, anon_ip);
-			r->v6.dstaddr[0] = anon_ip[0];
-			r->v6.dstaddr[1] = anon_ip[1];
-		}
 		af = PF_INET6;
 	} else {	// IPv4
-		if ( anon ) {
-			r->v4.srcaddr = anonymize(r->v4.srcaddr);
-			r->v4.dstaddr = anonymize(r->v4.dstaddr);
-		}
 		af = PF_INET;
 	}
 
@@ -1003,8 +949,7 @@ master_record_t *r = (master_record_t *)record;
 
 } // End of flow_record_pipe
 
-void flow_record_to_csv(void *record, char ** s, int anon, int tag) {
-uint64_t	anon_ip[2];
+void flow_record_to_csv(void *record, char ** s, int tag) {
 char 		*_s, as[IP_STRING_LEN], ds[IP_STRING_LEN]; 
 char		proto_str[MAX_PROTO_STR], datestr1[64], datestr2[64], flags_str[16];
 char		s_snet[IP_STRING_LEN], s_dnet[IP_STRING_LEN];
@@ -1019,15 +964,6 @@ master_record_t *r = (master_record_t *)record;
 		uint64_t snet[2];
 		uint64_t dnet[2];
 
-		if ( anon ) {
-			anonymize_v6(r->v6.srcaddr, anon_ip);
-			r->v6.srcaddr[0] = anon_ip[0];
-			r->v6.srcaddr[1] = anon_ip[1];
-
-			anonymize_v6(r->v6.dstaddr, anon_ip);
-			r->v6.dstaddr[0] = anon_ip[0];
-			r->v6.dstaddr[1] = anon_ip[1];
-		}
 		// remember IPs for network 
 		snet[0] = r->v6.srcaddr[0];
 		snet[1] = r->v6.srcaddr[1];
@@ -1068,10 +1004,6 @@ master_record_t *r = (master_record_t *)record;
 
 	} else {	// IPv4
 		uint32_t snet, dnet;
-		if ( anon ) {
-			r->v4.srcaddr = anonymize(r->v4.srcaddr);
-			r->v4.dstaddr = anonymize(r->v4.dstaddr);
-		}
 		snet = r->v4.srcaddr;
 		dnet = r->v4.dstaddr;
 		r->v4.srcaddr = htonl(r->v4.srcaddr);
@@ -1156,11 +1088,6 @@ master_record_t *r = (master_record_t *)record;
 	if ( (r->flags & FLAG_IPV6_NH ) != 0 ) { // IPv6
 		// EX_NEXT_HOP_v6:
 		as[0] = 0;
-		if ( anon ) {
-			anonymize_v6(r->ip_nexthop.v6, anon_ip);
-			r->ip_nexthop.v6[0] = anon_ip[0];
-			r->ip_nexthop.v6[1] = anon_ip[1];
-		}
 		r->ip_nexthop.v6[0] = htonll(r->ip_nexthop.v6[0]);
 		r->ip_nexthop.v6[1] = htonll(r->ip_nexthop.v6[1]);
 		inet_ntop(AF_INET6, r->ip_nexthop.v6, as, sizeof(as));
@@ -1174,9 +1101,6 @@ master_record_t *r = (master_record_t *)record;
 	} else {
 		// EX_NEXT_HOP_v4:
 		as[0] = 0;
-		if ( anon ) {
-			r->ip_nexthop.v4 = anonymize(r->ip_nexthop.v4);
-		}
 		r->ip_nexthop.v4 = htonl(r->ip_nexthop.v4);
 		inet_ntop(AF_INET, &r->ip_nexthop.v4, as, sizeof(as));
 		as[IP_STRING_LEN-1] = 0;
@@ -1190,11 +1114,6 @@ master_record_t *r = (master_record_t *)record;
 	if ( (r->flags & FLAG_IPV6_NH ) != 0 ) { // IPv6
 		// EX_NEXT_HOP_BGP_v6:
 		as[0] = 0;
-		if ( anon ) {
-			anonymize_v6(r->bgp_nexthop.v6, anon_ip);
-			r->bgp_nexthop.v6[0] = anon_ip[0];
-			r->bgp_nexthop.v6[1] = anon_ip[1];
-		}
 		r->bgp_nexthop.v6[0] = htonll(r->bgp_nexthop.v6[0]);
 		r->bgp_nexthop.v6[1] = htonll(r->bgp_nexthop.v6[1]);
 		inet_ntop(AF_INET6, r->ip_nexthop.v6, as, sizeof(as));
@@ -1208,9 +1127,6 @@ master_record_t *r = (master_record_t *)record;
 	} else {
 		// 	EX_NEXT_HOP_BGP_v4:
 		as[0] = 0;
-		if ( anon ) {
-			r->bgp_nexthop.v4 = anonymize(r->bgp_nexthop.v4);
-		}
 		r->bgp_nexthop.v4 = htonl(r->bgp_nexthop.v4);
 		inet_ntop(AF_INET, &r->bgp_nexthop.v4, as, sizeof(as));
 		as[IP_STRING_LEN-1] = 0;
@@ -1292,11 +1208,6 @@ master_record_t *r = (master_record_t *)record;
 	if ( (r->flags & FLAG_IPV6_EXP ) != 0 ) { // IPv6
 		// EX_NEXT_HOP_v6:
 		as[0] = 0;
-		if ( anon ) {
-			anonymize_v6(r->ip_router.v6, anon_ip);
-			r->ip_router.v6[0] = anon_ip[0];
-			r->ip_router.v6[1] = anon_ip[1];
-		}
 		r->ip_router.v6[0] = htonll(r->ip_router.v6[0]);
 		r->ip_router.v6[1] = htonll(r->ip_router.v6[1]);
 		inet_ntop(AF_INET6, r->ip_router.v6, as, sizeof(as));
@@ -1310,9 +1221,6 @@ master_record_t *r = (master_record_t *)record;
 	} else {
 		// EX_NEXT_HOP_v4:
 		as[0] = 0;
-		if ( anon ) {
-			r->ip_router.v4 = anonymize(r->ip_router.v4);
-		}
 		r->ip_router.v4 = htonl(r->ip_router.v4);
 		inet_ntop(AF_INET, &r->ip_router.v4, as, sizeof(as));
 		as[IP_STRING_LEN-1] = 0;
@@ -1336,11 +1244,10 @@ master_record_t *r = (master_record_t *)record;
 
 } // End of flow_record_to_csv
 
-void format_special(void *record, char ** s, int anon, int tag) {
+void format_special(void *record, char ** s, int tag) {
 master_record_t *r 		  = (master_record_t *)record;
 int	i, index;
 
-	do_anonymize  = anon;
 	do_tag		  = tag;
 	tag_string[0] = do_tag ? TAG_CHAR : '\0';
 	tag_string[1] = '\0';
@@ -1632,23 +1539,15 @@ char tmp_str[IP_STRING_LEN];
 	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->v6.srcaddr, ip);
-		} else {
-			ip[0] = r->v6.srcaddr[0];
-			ip[1] = r->v6.srcaddr[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->v6.srcaddr[0]);
+		ip[1] = htonll(r->v6.srcaddr[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
 		}
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->v4.srcaddr) : r->v4.srcaddr;
-		ip = htonl(ip);
+		ip = htonl(r->v4.srcaddr);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;
@@ -1669,15 +1568,8 @@ char 	tmp_str[IP_STRING_LEN], portchar;
 	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->v6.srcaddr, ip);
-		} else {
-			ip[0] = r->v6.srcaddr[0];
-			ip[1] = r->v6.srcaddr[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->v6.srcaddr[0]);
+		ip[1] = htonll(r->v6.srcaddr[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
@@ -1685,8 +1577,7 @@ char 	tmp_str[IP_STRING_LEN], portchar;
 		portchar = '.';
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->v4.srcaddr) : r->v4.srcaddr;
-		ip = htonl(ip);
+		ip = htonl(r->v4.srcaddr);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 		portchar = ':';
 	}
@@ -1708,23 +1599,15 @@ char tmp_str[IP_STRING_LEN];
 	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->v6.dstaddr, ip);
-		} else {
-			ip[0] = r->v6.dstaddr[0];
-			ip[1] = r->v6.dstaddr[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->v6.dstaddr[0]);
+		ip[1] = htonll(r->v6.dstaddr[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
 		}
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->v4.dstaddr) : r->v4.dstaddr;
-		ip = htonl(ip);
+		ip = htonl(r->v4.dstaddr);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;
@@ -1746,23 +1629,15 @@ char tmp_str[IP_STRING_LEN];
 	if ( (r->flags & FLAG_IPV6_NH ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->ip_nexthop.v6, ip);
-		} else {
-			ip[0] = r->ip_nexthop.v6[0];
-			ip[1] = r->ip_nexthop.v6[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->ip_nexthop.v6[0]);
+		ip[1] = htonll(r->ip_nexthop.v6[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
 		}
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->ip_nexthop.v4) : r->ip_nexthop.v4;
-		ip = htonl(ip);
+		ip = htonl(r->ip_nexthop.v4);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;
@@ -1783,23 +1658,15 @@ char tmp_str[IP_STRING_LEN];
 	if ( (r->flags & FLAG_IPV6_NH ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->bgp_nexthop.v6, ip);
-		} else {
-			ip[0] = r->bgp_nexthop.v6[0];
-			ip[1] = r->bgp_nexthop.v6[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->bgp_nexthop.v6[0]);
+		ip[1] = htonll(r->bgp_nexthop.v6[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
 		}
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->bgp_nexthop.v4) : r->bgp_nexthop.v4;
-		ip = htonl(ip);
+		ip = htonl(r->bgp_nexthop.v4);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;
@@ -1820,23 +1687,15 @@ char tmp_str[IP_STRING_LEN];
 	if ( (r->flags & FLAG_IPV6_EXP ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->ip_router.v6, ip);
-		} else {
-			ip[0] = r->ip_router.v6[0];
-			ip[1] = r->ip_router.v6[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->ip_router.v6[0]);
+		ip[1] = htonll(r->ip_router.v6[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
 		}
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->ip_router.v4) : r->ip_router.v4;
-		ip = htonl(ip);
+		ip = htonl(r->ip_router.v4);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;
@@ -1859,15 +1718,8 @@ char 	icmp_port[MAX_STRING_LENGTH];
 	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->v6.dstaddr, ip);
-		} else {
-			ip[0] = r->v6.dstaddr[0];
-			ip[1] = r->v6.dstaddr[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->v6.dstaddr[0]);
+		ip[1] = htonll(r->v6.dstaddr[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
@@ -1875,8 +1727,7 @@ char 	icmp_port[MAX_STRING_LENGTH];
 		portchar = '.';
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->v4.dstaddr) : r->v4.dstaddr;
-		ip = htonl(ip);
+		ip = htonl(r->v4.dstaddr);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 		portchar = ':';
 	}
@@ -1901,23 +1752,15 @@ char tmp_str[IP_STRING_LEN];
 	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->v6.srcaddr, ip);
-		} else {
-			ip[0] = r->v6.srcaddr[0];
-			ip[1] = r->v6.srcaddr[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->v6.srcaddr[0]);
+		ip[1] = htonll(r->v6.srcaddr[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
 		}
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->v4.srcaddr) : r->v4.srcaddr;
-		ip = htonl(ip);
+		ip = htonl(r->v4.srcaddr);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;
@@ -1940,23 +1783,15 @@ char tmp_str[IP_STRING_LEN];
 	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
 		uint64_t	ip[2];
 
-		if ( do_anonymize ) {
-			anonymize_v6(r->v6.dstaddr, ip);
-		} else {
-			ip[0] = r->v6.dstaddr[0];
-			ip[1] = r->v6.dstaddr[1];
-		}
-
-		ip[0] = htonll(ip[0]);
-		ip[1] = htonll(ip[1]);
+		ip[0] = htonll(r->v6.dstaddr[0]);
+		ip[1] = htonll(r->v6.dstaddr[1]);
 		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
 		if ( ! long_v6 ) {
 			condense_v6(tmp_str);
 		}
 	} else {	// IPv4
 		uint32_t	ip;
-		ip = do_anonymize ? anonymize(r->v4.dstaddr) : r->v4.dstaddr;
-		ip = htonl(ip);
+		ip = htonl(r->v4.dstaddr);
 		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;

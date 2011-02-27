@@ -194,56 +194,19 @@ struct fts3rec_offsets fo;
 struct ftver 		ftv;
 char				*rec;
 // nfdump variables
-nffile_t			nffile;
+nffile_t			*nffile;
 master_record_t	 record;
-file_header_t		*file_header;
-
+char				*s;
 uint32_t			cnt;
-size_t				len;
 
-	// Init file record
-	nffile.block_header = NULL;
-	nffile.writeto	  = NULL;
-	nffile.file_blocks  = 0;
-	nffile.compress	 = 0;
-	nffile.wfd		  = 0;
-
-
-	nffile.block_header = (data_block_header_t *)malloc(sizeof(data_block_header_t) + BUFFSIZE);
-	if ( !nffile.block_header ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
-		exit(255);
-	}
-	nffile.block_header->NumRecords = 0;
-	nffile.block_header->pad		= 0;
-	nffile.block_header->size	   = 0;
-	nffile.block_header->id		 = DATA_BLOCK_TYPE_2;
-	nffile.wfd					  = STDOUT_FILENO;
-	nffile.writeto				  = (void *)((pointer_addr_t)nffile.block_header + sizeof(data_block_header_t));
-
-	// initialize file header and dummy stat record
-	len = sizeof(file_header_t) + sizeof(stat_record_t);
-	file_header = (file_header_t *)malloc(len);
-	if ( !file_header  ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
-		exit(255);
+	nffile = OpenNewFile( "-", NULL, 0, 0, &s);
+	if ( !nffile ) {
+		fprintf(stderr, "%s\n", s);
+		return 1;
 	}
 
-	// prepare file header
-	memset((void *)file_header, 0, len);
-	file_header->magic 		= MAGIC;
-	file_header->version 	= LAYOUT_VERSION_1;
-	strncpy(file_header->ident, "none", IDENT_SIZE);
-
-	// write file header
-	write(STDOUT_FILENO, (void *)file_header, len) ;
-
-	// put extension map into buffer
-	memcpy(nffile.writeto, (void *)extension_info->map, extension_info->map->size);
-	nffile.writeto += extension_info->map->size;
-	nffile.block_header->NumRecords = 1;
-	nffile.block_header->size	   = extension_info->map->size;
-
+	AppendToBuffer(nffile, (void *)extension_info->map, extension_info->map->size);
+	
 	ftio_get_ver(ftio, &ftv);
 	fts3rec_compute_offsets(&fo, &ftv);
 
@@ -318,12 +281,11 @@ size_t				len;
 			i++;
 		}
 
-
-		PackRecord(&record, &nffile);
+		PackRecord(&record, nffile);
 
 		if ( extended ) {
 			char *string;
-			format_file_block_record(&record, &string, 0, 0);
+			format_file_block_record(&record, &string, 0);
 			fprintf(stderr, "%s\n", string);
 		} 
 
@@ -334,16 +296,15 @@ size_t				len;
 	} /* while */
 
 	// write the last records in buffer
-	if ( nffile.block_header->NumRecords ) {
-		if ( WriteBlock(&nffile) <= 0 ) {
+	if ( nffile->block_header->NumRecords ) {
+		if ( WriteBlock(nffile) <= 0 ) {
 			fprintf(stderr, "Failed to write output buffer: '%s'" , strerror(errno));
 		} 
 	}
 
 	free((void *)extension_info->map);
 	free((void *)extension_info);
-	free((void *)nffile.block_header);
-	free((void *)file_header);
+	DisposeFile(nffile);
 
 	return 0;
 

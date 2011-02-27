@@ -104,12 +104,20 @@ extension_descriptor_t extension_descriptor[] = {
 
 uint32_t Max_num_extensions;
 
+void FixExtensionMap(extension_map_t *map);
+
 void InitExtensionMaps(extension_map_list_t *extension_map_list ) {
+int i;
 	memset((void *)extension_map_list->slot, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
 	memset((void *)extension_map_list->page, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
 
 	extension_map_list->next_free = 0;
 	extension_map_list->max_used  = -1;
+
+	Max_num_extensions = 0;
+	i = 1;
+	while ( extension_descriptor[i++].id ) 
+		Max_num_extensions++;
 
 } // End of InitExtensionMaps
 
@@ -224,6 +232,8 @@ uint16_t map_id;
 			}
 		}
 	}
+
+	FixExtensionMap(map);
 
 	// add new entry to slot
 	extension_map_list->slot[map_id]	= (extension_info_t *)calloc(1,sizeof(extension_info_t));
@@ -494,6 +504,11 @@ int i, failed, extension_size, max_elements;
         i++;
     }
 
+	if ( (extension_size != map->extension_size ) ) {
+		printf("Verify map id %i: ERROR extension size: Expected %i, Map reports: %i!\n",  map->map_id,
+			extension_size, map->extension_size);
+		failed = 1;
+	}
 	if ( (i != max_elements ) && ((max_elements-i) != 1) ) {
 		// off by 1 is the opt alignment
 		printf("Verify map id %i: ERROR: Expected %i elements in map, but found %i!\n", map->map_id, max_elements, i);
@@ -503,6 +518,46 @@ int i, failed, extension_size, max_elements;
 	return failed;
 
 } // End of VerifyExtensionMap
+
+void FixExtensionMap(extension_map_t *map) {
+int i, extension_size, max_elements;
+
+	if (( map->size & 0x3 ) != 0 ) {
+		printf("PANIC! - Verify map id %i: WARNING: map size %i not aligned!\n", map->map_id, map->size);
+		exit(255);
+	}
+
+	if ( ((int)map->size - (int)sizeof(extension_map_t)) <= 0 ) {
+		printf("PANIC! - Verify map id %i: ERROR: map size %i too small!\n", map->map_id, map->size);
+		exit(255);
+	}
+
+	max_elements = (map->size - sizeof(extension_map_t)) / sizeof(uint16_t);
+	extension_size = 0;
+	i=0;
+    while (map->ex_id[i] && i <= max_elements) {
+        int id = map->ex_id[i];
+		if ( id > Max_num_extensions ) {
+			printf("PANIC! - Verify map id %i: ERROR: element id %i out of range [%i]!\n", map->map_id, id, Max_num_extensions);
+		}
+        extension_size += extension_descriptor[id].size;
+        i++;
+    }
+
+	// silently fix extension size bug of nfdump <= 1.6.2 ..
+	if ( (extension_size != map->extension_size ) ) {
+#ifdef DEVEL
+		printf("FixExtension map extension size from %i to %i\n", map->extension_size, extension_size);
+#endif
+		map->extension_size = extension_size;
+	}
+
+	if ( (i != max_elements ) && ((max_elements-i) != 1) ) {
+		// off by 1 is the opt alignment
+		printf("Verify map id %i: ERROR: Expected %i elements in map, but found %i!\n", map->map_id, max_elements, i);
+	}
+
+} // End of FixExtensionMap
 
 
 void DumpExMaps(char *filename) {

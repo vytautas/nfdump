@@ -626,13 +626,11 @@ size_t				size_required;
 		if ( map_table[i] == 0 )
 			continue;
 
-		extension_map->size += sizeof(uint16_t);
-		extension_map->extension_size += extension_descriptor[i].size;
 		switch(i) {
 			case EX_IO_SNMP_2:
 			case EX_IO_SNMP_4:
 				// 2 byte length
-				if ( input_template[NF9_IN_BYTES].length <= 2 || input_template[NF9_OUTPUT_SNMP].length <= 2) {
+				if ( input_template[NF9_INPUT_SNMP].length <= 2 || input_template[NF9_OUTPUT_SNMP].length <= 2) {
 					FillElement( table, NF9_INPUT_SNMP, &offset);
 					FillElement( table, NF9_OUTPUT_SNMP, &offset);
 					map_index = EX_IO_SNMP_2;
@@ -703,7 +701,7 @@ size_t				size_required;
 				break;
 			case EX_OUT_BYTES_4:
 			case EX_OUT_BYTES_8:
-				if ( input_template[NF9_OUT_PKTS].length <= 4 ) {
+				if ( input_template[NF9_OUT_BYTES].length <= 4 ) {
 					FillElement( table, NF9_OUT_BYTES, &offset);
 					map_index = EX_OUT_BYTES_4;
 				} else {
@@ -771,6 +769,8 @@ size_t				size_required;
 				// unused fill element for 32bit alignment
 				break;
 		}
+		extension_map->size += sizeof(uint16_t);
+		extension_map->extension_size += extension_descriptor[map_index].size;
 
 		// found extension in map_index must be the same as in map - otherwise map is dirty
 		if ( extension_map->ex_id[next_extension] != map_index ) {
@@ -895,11 +895,11 @@ int			i;
 			// do we store this extension? enabled != 0
 			// more than 1 v9 tag may map to an extension - so count this extension once only
 			if ( ext_id && extension_descriptor[ext_id].enabled ) {
+				dbg_printf("Type: %u, Length %u => Extension: %u\n", field_type, field_length, ext_id);
 				if ( map_table[ext_id] == 0 ) {
 					map_table[ext_id] = 1;
 					num_extensions++;
 				}
-				dbg_printf("Type: %u, Length %u => Extension: %u\n", field_type, field_length, ext_id);
 			} else {
 				dbg_printf("Type: %u, Length %u\n", field_type, field_length);
 			}
@@ -1107,7 +1107,7 @@ char				*string;
 		}
 
 		// check for enough space in output buffer
-		if ( !CheckBufferSpace(&(fs->nffile), table->output_record_size) ) {
+		if ( !CheckBufferSpace(fs->nffile, table->output_record_size) ) {
 			// this should really never occur, because the buffer gets flushed ealier
 			syslog(LOG_ERR,"Process_v9: output buffer size error. Abort v9 record processing");
 			dbg_printf("Process_v9: output buffer size error. Abort v9 record processing");
@@ -1116,7 +1116,7 @@ char				*string;
 		processed_records++;
 
 		// map file record to output buffer
-		data_record	= (common_record_t *)fs->nffile.writeto;
+		data_record	= (common_record_t *)fs->nffile->writeto;
 		// map output buffer as a byte array
 		out 	  = (uint8_t *)data_record;
 
@@ -1363,29 +1363,29 @@ char				*string;
 		if ( verbose ) {
 			master_record_t master_record;
 			ExpandRecord_v2((common_record_t *)data_record, &(table->extension_info), &master_record);
-		 	format_file_block_record(&master_record, &string, 0, 0);
+		 	format_file_block_record(&master_record, &string, 0);
 			printf("%s\n", string);
 		}
 
-		fs->nffile.block_header->size  += data_record->size;
-		fs->nffile.block_header->NumRecords++;
-		fs->nffile.writeto	= (common_record_t *)((pointer_addr_t)data_record + data_record->size);
+		fs->nffile->block_header->size  += data_record->size;
+		fs->nffile->block_header->NumRecords++;
+		fs->nffile->writeto	= (common_record_t *)((pointer_addr_t)data_record + data_record->size);
 
 		// advance input
 		size_left 		   -= table->input_record_size;
 		in  	  		   += table->input_record_size;
 
 		// buffer size sanity check
-		if ( fs->nffile.block_header->size  > BUFFSIZE ) {
+		if ( fs->nffile->block_header->size  > BUFFSIZE ) {
 			// should never happen
 			syslog(LOG_ERR,"### Software error ###: %s line %d", __FILE__, __LINE__);
 			syslog(LOG_ERR,"Process v9: Output buffer overflow! Flush buffer and skip records.");
-			syslog(LOG_ERR,"Buffer size: %u > %u", fs->nffile.block_header->size, BUFFSIZE);
+			syslog(LOG_ERR,"Buffer size: %u > %u", fs->nffile->block_header->size, BUFFSIZE);
 
 			// reset buffer
-			fs->nffile.block_header->size 		= 0;
-			fs->nffile.block_header->NumRecords = 0;
-			fs->nffile.writeto = (void *)((pointer_addr_t)fs->nffile.block_header + sizeof(data_block_header_t) );
+			fs->nffile->block_header->size 		= 0;
+			fs->nffile->block_header->NumRecords = 0;
+			fs->nffile->writeto = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
 			return;
 		}
 
@@ -1542,7 +1542,7 @@ static int pkg_num = 0;
 		}
 
 #ifdef DEVEL
-		if ( (ptrdiff_t)fs->nffile.writeto & 0x3 ) {
+		if ( (ptrdiff_t)fs->nffile->writeto & 0x3 ) {
 			fprintf(stderr, "PANIC: alignment error!! \n");
 			exit(255);
 		}
@@ -2229,7 +2229,7 @@ time_t		now = time(NULL);
 
 #ifdef DEVEL
 //	char		*string;
-//	format_file_block_record(master_record, 1, &string, 0, 0);
+//	format_file_block_record(master_record, 1, &string, 0);
 //	dbg_printf("%s\n", string);
 #endif
 

@@ -223,7 +223,8 @@ static struct entry_filter_s {
 
 #define NUM_PTR 16
 
-static char		*first_file, *last_file, current_file[255];
+static char		*first_file, *last_file;
+static char		*current_file = NULL;
 static uint32_t	twin_first, twin_last;
 static stringlist_t source_dirs, file_list;
 
@@ -994,13 +995,14 @@ static int cnt;
 	// stdin ( current = 0 ) is not closed
 	if ( current > 0 ) {
 		close(current);
-		current_file[0] = '\0';
+		current_file = NULL;
 	}
 
 	// no or no more files available
 	if ( file_list.num_strings == cnt ) {
 		if ( stat_record )
 			*stat_record = NULL;
+		current_file = NULL;
 		return EMPTY_LIST;
 	}
 	
@@ -1012,6 +1014,7 @@ static int cnt;
 
 	while ( cnt < file_list.num_strings ) {
 		fd = OpenFile(file_list.list[cnt], &stat_ptr, &error);	// Open the file
+		current_file = file_list.list[cnt];
 		cnt++;
 
 		// stdin
@@ -1019,6 +1022,7 @@ static int cnt;
 			if ( stat_record )
 				*stat_record = NULL;
 			CurrentIdent = "none";
+			current_file = NULL;
 			return fd;
 		}
 
@@ -1036,6 +1040,7 @@ static int cnt;
 	if ( stat_record )
 		*stat_record = NULL;
 
+	current_file = NULL;
 	return EMPTY_LIST;
 
 } // End of GetNextFile

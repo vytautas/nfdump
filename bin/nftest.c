@@ -147,13 +147,14 @@ void check_offset(char *text, pointer_addr_t offset, pointer_addr_t expect) {
 }
 
 void CheckCompression(char *filename) {
-nffile_t	nffile;
-int i, rfd;
+nffile_t	*nffile;
+int i, rfd, compress, bsize;
 ssize_t	ret;
 stat_record_t *stat_ptr;
 char	*string;
 char outfile[MAXPATHLEN];
-void	*buff_ptr;
+void	*buff_ptr, *in_buff;
+data_block_header_t *in_block_header, *p;					
 
 struct timeval  	tstart[2];
 struct timeval  	tend[2];
@@ -170,15 +171,15 @@ double wall[2];
 	snprintf(outfile, MAXPATHLEN, "%s-tmp", filename);
 	outfile[MAXPATHLEN-1] = '\0';
 
-	nffile.block_header = malloc(BUFFSIZE + sizeof(data_block_header_t));
-	if ( !nffile.block_header ) {
-		fprintf(stderr, "Buffer allocation error: %s", strerror(errno));
-		close(rfd);
+	in_buff = malloc(BUFFSIZE + sizeof(data_block_header_t));
+	if ( !in_buff ) {
+		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
-	buff_ptr	 = (void *)((pointer_addr_t)nffile.block_header + sizeof(data_block_header_t));
+	in_block_header = (data_block_header_t *)in_buff;
+	buff_ptr	 = (void *)((pointer_addr_t)in_buff + sizeof(data_block_header_t));
 
-	ret = ReadBlock(rfd, nffile.block_header, buff_ptr, &string);
+	ret = ReadBlock(rfd, in_block_header, buff_ptr, &string);
 	if ( ret < 0 ) {
 		fprintf(stderr, "Error while reading data block. Abort.\n");
 		close(rfd);
@@ -187,41 +188,49 @@ double wall[2];
 	}
 	close(rfd);
 
-	for ( nffile.compress=0; nffile.compress<=1; nffile.compress++ ) {
-		nffile.wfd = OpenNewFile(outfile, &string, nffile.compress);
-		if ( nffile.wfd < 0 ) {
+	bsize = in_block_header->size;
+	for ( compress=0; compress<=1; compress++ ) {
+		nffile = OpenNewFile(outfile, NULL, compress, 0, &string);
+		if ( !nffile ) {
         	fprintf(stderr, "%s\n", string);
         	return;
     	}
+		
+		// tmp replace buffer with data from input file
+		p = nffile->block_header;
+		nffile->block_header = in_block_header;
 
-		gettimeofday(&(tstart[nffile.compress]), (struct timezone*)NULL);
+		gettimeofday(&(tstart[compress]), (struct timezone*)NULL);
 		for ( i=0; i<100; i++ ) {
-			if ( (ret = WriteBlock(&nffile)) <= 0 ) {
+			if ( (ret = WriteBlock(nffile)) <= 0 ) {
 				fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
 				close(rfd);
-				close(nffile.wfd);
+				CloseUpdateFile(nffile, stat_ptr, "none", &string );
 				unlink(outfile);
 				return;
 			}
 		}
-		gettimeofday(&(tend[nffile.compress]), (struct timezone*)NULL);
+		gettimeofday(&(tend[compress]), (struct timezone*)NULL);
 
-		CloseUpdateFile(nffile.wfd, stat_ptr, 0, "none", nffile.compress, &string );
+		// reset buffer
+		nffile->block_header = p;
+		CloseUpdateFile(nffile, stat_ptr, "none", &string );
+		nffile = DisposeFile(nffile);
 		unlink(outfile);
 
-		if (tend[nffile.compress].tv_usec < tstart[nffile.compress].tv_usec) 
-			tend[nffile.compress].tv_usec += 1000000, --tend[nffile.compress].tv_sec;
+		if (tend[compress].tv_usec < tstart[compress].tv_usec) 
+			tend[compress].tv_usec += 1000000, --tend[compress].tv_sec;
 
-		usec = tend[nffile.compress].tv_usec - tstart[nffile.compress].tv_usec;
-		sec  = tend[nffile.compress].tv_sec - tstart[nffile.compress].tv_sec;
+		usec = tend[compress].tv_usec - tstart[compress].tv_usec;
+		sec  = tend[compress].tv_sec - tstart[compress].tv_sec;
 
-		wall[nffile.compress] = (double)sec + ((double)usec)/1000000;
+		wall[compress] = (double)sec + ((double)usec)/1000000;
 	}
 
-	printf("100 write cycles, with size %u bytes\n", nffile.block_header->size);
-	printf("Uncompressed write time: %-.6fs size: %u\n", wall[0], nffile.block_header->size);
+	printf("100 write cycles, with size %u bytes\n", bsize);
+	printf("Uncompressed write time: %-.6fs size: %u\n", wall[0], bsize);
 	printf("Compressed write time  : %-.6fs size: %d\n", wall[1], (int32_t)ret);
-	printf("Ratio                  : 1:%-.3f\n", (double)ret/(double)nffile.block_header->size);
+	printf("Ratio                  : 1:%-.3f\n", (double)ret/(double)bsize);
 
 	if ( wall[0] < wall[1] )
 		printf("You should run nfcapd without compression\n");
@@ -232,11 +241,13 @@ double wall[2];
 
 int main(int argc, char **argv) {
 master_record_t flow_record;
+common_record_t c_record;
 uint64_t *blocks, l;
 uint32_t size, in[2];
 time_t	now;
 int ret, i;
 value64_t	v;
+void *p;
 
     if ( sizeof(struct in_addr) != sizeof(uint32_t) ) {
 #ifdef HAVE_SIZE_T_Z_FORMAT
@@ -247,6 +258,14 @@ value64_t	v;
 		exit(255);
     }
 
+	p = (void *)c_record.data;
+	if (( (pointer_addr_t)p - (pointer_addr_t)&c_record ) != COMMON_RECORD_DATA_SIZE ) {
+		printf("*** common record size missmatch: expected %i, found: %i\n",	
+			COMMON_RECORD_DATA_SIZE, (pointer_addr_t)p - (pointer_addr_t)&c_record	);
+		exit(255);
+	} else {
+		printf("Common record size is %i\n", COMMON_RECORD_DATA_SIZE);
+	}
 	i = 3;
 	printf("ALIGN BYTES: %lu\n", (long unsigned)ALIGN_BYTES);
 	printf("aligned: %i -> %lu\n", i, (long unsigned)(((u_int)(i) + ALIGN_BYTES) &~ ALIGN_BYTES));

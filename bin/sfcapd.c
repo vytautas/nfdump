@@ -359,18 +359,10 @@ srecord_t	*commbuff;
 	// Init each netflow source output data buffer
 	fs = FlowSource;
 	while ( fs ) {
-		// Init block header
-		fs->nffile.block_header->NumRecords	= 0;
-		fs->nffile.block_header->size 		= 0;
-		fs->nffile.block_header->id			= DATA_BLOCK_TYPE_2;
-		fs->nffile.block_header->pad		= 0;
-		fs->nffile.writeto 					= (void *)((pointer_addr_t)fs->nffile.block_header + sizeof(data_block_header_t) );
-		fs->nffile.compress		 			= compress;
-		fs->nffile.file_blocks				= 0;
 
 		// prepare file
-		fs->nffile.wfd = OpenNewFile(fs->current, &string, fs->nffile.compress);
-		if ( string != NULL ) {
+		fs->nffile = OpenNewFile(fs->current, NULL, compress, 0, &string);
+		if ( !fs->nffile ) {
 			syslog(LOG_ERR, "%s", string);
 			return;
 		}
@@ -471,17 +463,17 @@ sleep(2);
 
 				if ( verbose ) {
 					// Dump to stdout
-					format_file_block_header(fs->nffile.block_header, &string, 0, 0);
+					format_file_block_header(fs->nffile->block_header, &string, 0);
 					printf("%s\n", string);
 				}
 
-				if ( fs->nffile.block_header->NumRecords ) {
+				if ( fs->nffile->block_header->NumRecords ) {
 					// flush current buffer to disc
-					if ( WriteBlock(&(fs->nffile)) <= 0 )
+					if ( WriteBlock(fs->nffile) <= 0 )
 						syslog(LOG_ERR, "Ident: %s, failed to write output buffer to disk: '%s'" , fs->Ident, strerror(errno));
 					else 
 						// update successful written blocks
-						fs->nffile.file_blocks++;
+						fs->nffile->file_header->NumBlocks++;
 				} // else - no new records in current block
 
 	
@@ -496,7 +488,7 @@ sleep(2);
 				fs->stat_record.msec_last	= fs->last_seen - fs->stat_record.last_seen*1000;
 	
 				// Write Stat record and close file
-				CloseUpdateFile(fs->nffile.wfd, &fs->stat_record, fs->nffile.file_blocks, fs->Ident, fs->nffile.compress, &string );
+				CloseUpdateFile(fs->nffile, &fs->stat_record, fs->Ident, &string );
 				if ( string != NULL ) {
 					// closing the file failed. maybe disk full ??
 					syslog(LOG_ERR, "Ident: %s, %s", fs->Ident, string);
@@ -534,31 +526,27 @@ sleep(2);
 					fs->Ident, (unsigned long long)fs->stat_record.numflows, (unsigned long long)fs->stat_record.numpackets, 
 					(unsigned long long)fs->stat_record.numbytes, fs->stat_record.sequence_failure, fs->bad_packets);
 
-				// Initialize block header and write pointer for next block
-				fs->nffile.block_header->NumRecords	= 0;
-				fs->nffile.block_header->size 		= 0;
-				fs->nffile.writeto = (void *)((pointer_addr_t)fs->nffile.block_header + sizeof(data_block_header_t) );
-
 				// reset stat record
 				memset((void *)&fs->stat_record, 0, sizeof(stat_record_t));
 				fs->bad_packets = 0;
 				fs->first_seen 	= 0xffffffffffffLL;
 				fs->last_seen 	= 0;
-				fs->nffile.file_blocks	= 0;
 
 				// Dump all extension maps to the buffer
 				FlushExtensionMaps(fs);
 
 				if ( !done ) {
-					fs->nffile.wfd = OpenNewFile(fs->current, &string, fs->nffile.compress);
-					if ( string != NULL ) {
-						syslog(LOG_ERR, "Ident: %s, %s", fs->Ident, string);
-						syslog(LOG_ERR, "New flows will get lost!\n");
-	
-						// do not crash or terminate
-						fs->nffile.wfd =  0;
+					fs->nffile = OpenNewFile(fs->current, fs->nffile, compress, 0, &string );
+					if ( fs->nffile ) {
+						syslog(LOG_ERR, "Fatal: ident: %s, %s", fs->Ident, string);
+						syslog(LOG_ERR, "Suicide due to fatal error!");
+						break;
 					}
 				}
+
+				// Dump all extension maps to the buffer
+				FlushExtensionMaps(fs);
+
 
 				// next flow source
 				fs = fs->next;
@@ -649,12 +637,12 @@ sleep(2);
 		export_packets++;
 
 		// flush current buffer to disc
-		if ( fs->nffile.block_header->size > BUFFSIZE ) {
+		if ( fs->nffile->block_header->size > BUFFSIZE ) {
 			// fishy! - we already wrote into someone elses memory! - I'm sorry
 			// reset output buffer - data may be lost, as we don not know, where it happen
-			fs->nffile.block_header->size 		= 0;
-			fs->nffile.block_header->NumRecords	= 0;
-			fs->nffile.writeto = (void *)((pointer_addr_t)fs->nffile.block_header + sizeof(data_block_header_t) );
+			fs->nffile->block_header->size 		 = 0;
+			fs->nffile->block_header->NumRecords = 0;
+			fs->nffile->writeto = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
 			syslog(LOG_ERR, "### Software bug ### Ident: %s, output buffer overflow: expect memory inconsitency", fs->Ident);
 		}
 	}
@@ -666,7 +654,7 @@ sleep(2);
 
 	fs = FlowSource;
 	while ( fs ) {
-		free((void *)fs->nffile.block_header);
+		fs->nffile = DisposeFile(fs->nffile);
 		fs = fs->next;
 	}
 
@@ -1048,13 +1036,6 @@ int	c;
 		// Init the extension map list
 		if ( !InitExtensionMapList(fs) ) {
 			// error message goes to syslog
-			exit(255);
-		}
-
-		// setup output memory buffer
-		fs->nffile.block_header = (data_block_header_t *)malloc(BUFFSIZE + sizeof(data_block_header_t));
-		if ( !fs->nffile.block_header ) {
-			syslog(LOG_ERR, "malloc() buffer allocation error: %s", strerror(errno));
 			exit(255);
 		}
 

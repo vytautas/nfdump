@@ -71,7 +71,7 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
 			nffile->block_header->size 		 = 0;
 			nffile->block_header->NumRecords = 0;
 			nffile->writeto = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t) );
-			nffile->file_blocks++;
+			nffile->file_header->NumBlocks++;
 		}
 	}
 
@@ -360,7 +360,7 @@ int		i;
 			nffile->block_header->size 		 = 0;
 			nffile->block_header->NumRecords = 0;
 			nffile->writeto = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t) );
-			nffile->file_blocks++;
+			nffile->file_header->NumBlocks++;
 		}
 	}
 
@@ -579,7 +579,6 @@ int		i;
 
 } // End of PackRecord
 
-
 static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t required) {
 
 	// flush current buffer to disc
@@ -598,7 +597,7 @@ static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t require
 			nffile->block_header->size 		 = 0;
 			nffile->block_header->NumRecords = 0;
 			nffile->writeto = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t) );
-			nffile->file_blocks++;
+			nffile->file_header->NumBlocks++;
 		}
 
 	}
@@ -614,4 +613,3 @@ static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t require
 	nffile->writeto = (void *)((pointer_addr_t)nffile->writeto + required);
 
 } // End of AppendToBuffer
-

@@ -70,6 +70,7 @@
 extern int verbose;
 extern extension_descriptor_t extension_descriptor[];
 extern uint32_t default_sampling;
+extern uint32_t overwrite_sampling;
 
 /* module limited globals */
 static extension_info_t v5_extension_info;		// common for all v5 records
@@ -94,6 +95,9 @@ typedef struct exporter_v5_s {
 	// exporter identifier
 	uint32_t version;
 	uint16_t engine_tag;
+	ip_addr_t	ip;
+	uint32_t	sa_family;
+
 	uint16_t align;
 	uint16_t sampling_mode;
 	uint16_t sampling_interval;
@@ -188,7 +192,8 @@ char ipstr[IP_STRING_LEN];
 
 	// search the appropriate exporter engine
 	while ( *e ) {
-		if ( (*e)->version == 5 && (*e)->engine_tag == engine_tag )
+		if ( (*e)->version == 5 && (*e)->engine_tag == engine_tag &&
+			 (*e)->ip.v6[0] == fs->ip.v6[0] && (*e)->ip.v6[1] == fs->ip.v6[1]) 
 			return *e;
 		e = &((*e)->next);
 	}
@@ -201,6 +206,9 @@ char ipstr[IP_STRING_LEN];
 	}
 	memset((void *)(*e), 0, sizeof(exporter_v5_t));
 	(*e)->engine_tag		= engine_tag;
+	(*e)->ip.v6[0]			= fs->ip.v6[0];
+	(*e)->ip.v6[1]			= fs->ip.v6[1];
+	(*e)->sa_family			= fs->sa_family;
 	(*e)->align				= 0;
 	(*e)->sampling_mode		= (0xC000 & ntohs(header->sampling_interval)) >> 14;
 	(*e)->sampling_interval	= 0x3fff & ntohs(header->sampling_interval);
@@ -247,6 +255,11 @@ char ipstr[IP_STRING_LEN];
 	syslog(LOG_INFO, "Process_v5: New exporter: engine id %u, type %u, IP: %s, Sampling Mode: %i, Sampling Interval: %i\n", 
 		( engine_tag & 0xFF ),  ( (engine_tag >> 8) & 0xFF ), ipstr, (*e)->sampling_mode	,(*e)->sampling_interval         );
 
+	if ( overwrite_sampling > 0 )  {
+		(*e)->sampling_interval = overwrite_sampling;
+		syslog(LOG_INFO, "Process_v5: Hard overwrite sampling rate: %llu\n", (*e)->sampling_interval);
+	}
+
 	return (*e);
 
 } // End of GetExporter
@@ -287,7 +300,7 @@ char		*string;
 		// this many data to process
 		size_left	= in_buff_cnt;
 
-		common_record = fs->nffile.writeto;
+		common_record = fs->nffile->writeto;
 		done = 0;
 		while ( !done ) {
 			v5_block_t			*v5_block;
@@ -298,26 +311,26 @@ char		*string;
 	  		count	= ntohs(v5_header->count);
 			if ( count > NETFLOW_V5_MAX_RECORDS ) {
 				syslog(LOG_ERR,"Process_v5: Unexpected record count in header: %i. Abort v5/v7 record processing", count);
-				fs->nffile.writeto = (void *)common_record;
+				fs->nffile->writeto = (void *)common_record;
 				return;
 			}
 
 			// input buffer size check for all expected records
 			if ( size_left < ( NETFLOW_V5_HEADER_LENGTH + count * flow_record_length) ) {
 				syslog(LOG_ERR,"Process_v5: Not enough data to process v5 record. Abort v5/v7 record processing");
-				fs->nffile.writeto = (void *)common_record;
+				fs->nffile->writeto = (void *)common_record;
 				return;
 			}
 	
 			// output buffer size check for all expected records
-			if ( !CheckBufferSpace(&(fs->nffile), count * v5_output_record_size) ) {
+			if ( !CheckBufferSpace(fs->nffile, count * v5_output_record_size) ) {
 				// fishy! - should never happen. maybe disk full?
 				syslog(LOG_ERR,"Process_v5: output buffer size error. Abort v5/v7 record processing");
 				return;
 			}
 
 			// map output record to memory buffer
-			common_record	= (common_record_t *)fs->nffile.writeto;
+			common_record	= (common_record_t *)fs->nffile->writeto;
 			v5_block		= (v5_block_t *)common_record->data;
 
 			// sequence check
@@ -441,12 +454,26 @@ char		*string;
 				if ( First > Last )
 					/* First in msec, in case of msec overflow, between start and end */
 					start_time = boot_time - 0x100000000LL + (uint64_t)First;
+					if ( start_time < boot_time ) {
+						uint32_t _t;
+						syslog(LOG_ERR,"Process_v5: Unexpected time swap: First 0x%xll smaller than boot time: 0x%xll", start_time, boot_time);
+						// assume bug, some users reported - swap time stamps
+						_t= First;
+						First = Last;
+						Last = _t;
+						start_time = (uint64_t)First + boot_time;
+					}
 				else
 					start_time = (uint64_t)First + boot_time;
 		
 				/* end time in msecs */
 				end_time = (uint64_t)Last + boot_time;
 
+				// if overflow happened after flow ended but before got exported
+				if ( Last > v5_header->SysUptime ) {
+					start_time  -= 0x100000000LL;
+					end_time    -= 0x100000000LL;
+				}
 
 				common_record->first 		= start_time/1000;
 				common_record->msec_first	= start_time - common_record->first*1000;
@@ -500,7 +527,7 @@ char		*string;
 				if ( verbose ) {
 					master_record_t master_record;
 					ExpandRecord_v2((common_record_t *)common_record, &v5_extension_info, &master_record);
-				 	format_file_block_record(&master_record, &string, 0, 0);
+				 	format_file_block_record(&master_record, &string, 0);
 					printf("%s\n", string);
 				}
 
@@ -508,7 +535,7 @@ char		*string;
 				v5_record		= (netflow_v5_record_t *)((pointer_addr_t)v5_record + flow_record_length);
 
 				if ( ((pointer_addr_t)data_ptr - (pointer_addr_t)common_record) != v5_output_record_size ) {
-					printf("Panic size check: ptr diff: %u, record size: %u\n", ((pointer_addr_t)data_ptr - (pointer_addr_t)common_record), v5_output_record_size ); 
+					printf("Panic size check: ptr diff: %llu, record size: %u\n", ((pointer_addr_t)data_ptr - (pointer_addr_t)common_record), v5_output_record_size ); 
 					abort();
 				}
 				// advance to next output record
@@ -516,23 +543,24 @@ char		*string;
 				v5_block		= (v5_block_t *)common_record->data;
 				
 				// buffer size sanity check - should never happen, but check it anyway
-				bsize = (pointer_addr_t)common_record - (pointer_addr_t)fs->nffile.block_header;
+				bsize = (pointer_addr_t)common_record - (pointer_addr_t)fs->nffile->block_header - sizeof(data_block_header_t);
 				if ( bsize >= BUFFSIZE ) {
+					syslog(LOG_ERR,"### Software error ###: %s line %d", __FILE__, __LINE__);
 					syslog(LOG_ERR,"Process_v5: Output buffer overflow! Flush buffer and skip records.");
-					syslog(LOG_ERR,"Buffer size: size: %u, bsize: %u > %u", fs->nffile.block_header->size, bsize, BUFFSIZE);
+					syslog(LOG_ERR,"Buffer size: size: %u, bsize: %u > %u", fs->nffile->block_header->size, bsize, BUFFSIZE);
 					// reset buffer
-					fs->nffile.block_header->size 		= 0;
-					fs->nffile.block_header->NumRecords = 0;
-					fs->nffile.writeto = (void *)((pointer_addr_t)fs->nffile.block_header + sizeof(data_block_header_t) );
+					fs->nffile->block_header->size 		= 0;
+					fs->nffile->block_header->NumRecords = 0;
+					fs->nffile->writeto = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
 					return;
 				}
 
 			} // End of foreach v5 record
 
 		// update file record size ( -> output buffer size )
-		fs->nffile.block_header->NumRecords	+= count;
-		fs->nffile.block_header->size 		+= count * v5_output_record_size;
-		fs->nffile.writeto 					= (void *)common_record;
+		fs->nffile->block_header->NumRecords	+= count;
+		fs->nffile->block_header->size 		+= count * v5_output_record_size;
+		fs->nffile->writeto 					= (void *)common_record;
 
 		// still to go for this many input bytes
 		size_left 	-= NETFLOW_V5_HEADER_LENGTH + count * flow_record_length;

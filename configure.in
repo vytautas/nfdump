@@ -3,7 +3,7 @@
 
 AC_PREREQ(2.59)
 AC_REVISION($Revision: 69 $)dnl
-AC_INIT(nfdump, 1.6.2, phaag@users.sourceforge.net)
+AC_INIT(nfdump, 1.6.3, phaag@users.sourceforge.net)
 #AC_CONFIG_SRCDIR([grammar.y])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE()
@@ -148,6 +148,39 @@ AC_SUBST(RRD_LIBS)
 ]
 ,
 AM_CONDITIONAL(NFPROFILE, false)
+)
+
+AC_ARG_ENABLE(nftrack,
+[  --enable-nftrack      Build nftrack used by PortTracker; default is NO],
+[ 
+	AC_CHECK_LIB(rrd, rrd_update,[
+cat >>config.h <<_ACEOF
+#define HAVE_LIBRRD 1
+_ACEOF
+RRD_LIBS="-lrrd"
+AC_SUBST(RRD_LIBS)
+]
+, AC_MSG_ERROR(Can not link librrd. Please specify --with-rrdpath=.. configure failed! ))
+	AC_CHECK_HEADERS([rrd.h])
+	if test "$ac_cv_header_rrd_h" = yes; then
+		AM_CONDITIONAL(NFTRACK, true)
+	else
+		AC_MSG_ERROR(Required rrd.h header file not found!)
+	fi
+	AC_RUN_IFELSE(
+		[ AC_LANG_PROGRAM(
+			[[
+				#include <stdio.h>
+				#include <rrd.h>
+			]],
+            [[ 
+				rrd_value_t d; 
+			]])
+		],, AC_MSG_ERROR(Can not load rrd library. Not in loader search path! ))
+
+]
+,
+AM_CONDITIONAL(NFTRACK, false)
 )
 
 AC_ARG_ENABLE(sflow,

@@ -565,6 +565,10 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			RB_INIT(root);
 
 			RB_FOREACH(node, ULongtree, (ULongtree_t *)$5) {
+				if ( node->value > 65535 ) {
+					yyerror("Port outside of range 0..65535");
+					YYABORT;
+				}
 				if ((n = malloc(sizeof(struct ULongListNode))) == NULL) {
 					yyerror("malloc() error");
 					YYABORT;
@@ -670,7 +674,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 
 	| dqual AS comp NUMBER {	
 		$$.direction = $1.direction;
-		if ( $4 > 0x7FFFFFFF || $4 < 0 ) {
+		if ( $4 > 0xfFFFFFFF || $4 < 0 ) {
 			yyerror("AS number of range");
 			YYABORT;
 		}
@@ -730,7 +734,10 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			RB_INIT(root);
 
 			RB_FOREACH(node, ULongtree, (ULongtree_t *)$5) {
-
+				if ( node->value > 0xFFFFFFFFLL ) {
+					yyerror("AS number of range");
+					YYABORT;
+				}
 				if ((n = malloc(sizeof(struct ULongListNode))) == NULL) {
 					yyerror("malloc() error");
 					YYABORT;
@@ -1026,8 +1033,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| dqual IF NUMBER {
-		if ( $3 > 65535 ) {
-			yyerror("Input interface number must be 0..65535");
+		if ( $3 > 0xffffffffLL ) {
+			yyerror("Input interface number must 0..2^32");
 			YYABORT;
 		}
 
@@ -1563,10 +1570,6 @@ iplist:	STRING '/' NUMBER	{
 ullist:	NUMBER	{ 
 		struct ULongListNode *node;
 
-		if ( $1 > 65535 ) {
-			yyerror("Value outside of range 0..65535");
-			YYABORT;
-		}
 		ULongtree_t *root = malloc(sizeof(ULongtree_t));
 
 		if ( root == NULL) {
@@ -1587,10 +1590,6 @@ ullist:	NUMBER	{
 	| ullist NUMBER { 
 		struct ULongListNode *node;
 
-		if ( $2 > 65535 ) {
-			yyerror("Value outside of range 0..65535");
-			YYABORT;
-		}
 		if ((node = malloc(sizeof(struct ULongListNode))) == NULL) {
 			yyerror("malloc() error");
 			YYABORT;

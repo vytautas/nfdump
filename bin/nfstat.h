@@ -102,12 +102,12 @@ void InsertFlow(common_record_t *raw_record, master_record_t *flow_record);
 
 void AddStat(common_record_t *raw_record, master_record_t *flow_record );
 
-void PrintFlowTable(printer_t print_record, uint32_t limitflows, int date_sorted, int anon, int tag, int GuessDir);
+void PrintFlowTable(printer_t print_record, uint32_t limitflows, int date_sorted, int tag, int GuessDir);
 
-void PrintFlowStat(char *record_header, printer_t print_record, int topN, int anon, int tag, int quiet, int cvs_output);
+void PrintFlowStat(char *record_header, printer_t print_record, int topN, int tag, int quiet, int cvs_output);
 
-void PrintElementStat(stat_record_t	*sum_stat, char *record_header, printer_t print_record, int topN, int anon, int tag, int quiet, int pipe_output, int cvs_output);
+void PrintElementStat(stat_record_t	*sum_stat, char *record_header, printer_t print_record, int topN, int tag, int quiet, int pipe_output, int cvs_output);
 
-void PrintSortedFlows(printer_t print_record, uint32_t limitflows, int anon, int tag);
+void PrintSortedFlows(printer_t print_record, uint32_t limitflows, int tag);
 
 #endif //_NFSTAT_H

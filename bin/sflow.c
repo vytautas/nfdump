@@ -1073,13 +1073,13 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	// output buffer size check
 	// IPv6 needs 2 x 16 bytes, IPv4 2 x 4 bytes
 	ipsize = sample->gotIPV6 ? 32 : 8;
-	if ( !CheckBufferSpace(&(fs->nffile), sflow_output_record_size[ip_flags] + ipsize )) {
+	if ( !CheckBufferSpace(fs->nffile, sflow_output_record_size[ip_flags] + ipsize )) {
 		// fishy! - should never happen. maybe disk full?
 		syslog(LOG_ERR,"SFLOW: output buffer size error. Abort sflow record processing");
 		return;
 	}
 
-	common_record = (common_record_t *)fs->nffile.writeto;
+	common_record = (common_record_t *)fs->nffile->writeto;
 
 	common_record->size			= sflow_output_record_size[ip_flags] + ipsize;
 	common_record->type			= CommonRecordType;
@@ -1289,22 +1289,22 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 		master_record_t master_record;
 		char	*string;
 		ExpandRecord_v2((common_record_t *)common_record, &exporter->sflow_extension_info[ip_flags], &master_record);
-	 	format_file_block_record(&master_record, &string, 0, 0);
+	 	format_file_block_record(&master_record, &string, 0);
 		printf("%s\n", string);
 	}
 
 	// update file record size ( -> output buffer size )
-	fs->nffile.block_header->NumRecords++;
-	fs->nffile.block_header->size 		+= (sflow_output_record_size[ip_flags] + ipsize);
+	fs->nffile->block_header->NumRecords++;
+	fs->nffile->block_header->size 		+= (sflow_output_record_size[ip_flags] + ipsize);
 #ifdef DEVEL
-	if ( (next_data - fs->nffile.writeto) != (sflow_output_record_size[ip_flags] + ipsize) ) {
+	if ( (next_data - fs->nffile->writeto) != (sflow_output_record_size[ip_flags] + ipsize) ) {
 		printf("PANIC: Size error. Buffer diff: %llu, Size: %u\n", 
-			(unsigned long long)(next_data - fs->nffile.writeto), 
+			(unsigned long long)(next_data - fs->nffile->writeto), 
 			(sflow_output_record_size[ip_flags] + ipsize));
 		exit(255);
 	}
 #endif
-	fs->nffile.writeto 					= next_data;
+	fs->nffile->writeto 					= next_data;
 
 }
 			

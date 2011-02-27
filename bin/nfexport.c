@@ -138,8 +138,8 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 			num_extensions++;
 		}
 #ifdef DEVEL
-		printf("map: has_aggr_flows: %i, has_out_bytes: %i, has_out_packets: %i\n", 
-			has_aggr_flows, has_out_bytes, has_out_packets);
+		printf("map: num_extensions: %i, has_aggr_flows: %i, has_out_bytes: %i, has_out_packets: %i\n", 
+			num_extensions, has_aggr_flows, has_out_bytes, has_out_packets);
 #endif
 
 		// count missing extensions
@@ -154,8 +154,12 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 			opt_extensions++;
 
 		// calculate new map size
+		new_map_size = sizeof(extension_map_t) + ( num_extensions + opt_extensions ) * sizeof(uint16_t);
+#ifdef DEVEL
+		printf("opt_extensions: %i, new_map_size: %i\n", opt_extensions,new_map_size );
+		PrintExtensionMap(SourceMap);
+#endif
 		if ( opt_extensions ) {
-			new_map_size = sizeof(extension_map_t) + ( num_extensions + opt_extensions ) * sizeof(uint16_t);
     		// align 32bits
     		if (( new_map_size & 0x3 ) != 0 ) {
         		new_map_size += 4 - ( new_map_size & 0x3 );
@@ -232,26 +236,29 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 
 } // End of CreateExportExtensionMaps
 
-void ExportFlowTable(char *filename, int compress, int aggregate, int bidir, int date_sorted, int anon) {
+void ExportFlowTable(char *filename, int compress, int aggregate, int bidir, int date_sorted) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 SortElement_t 		*SortList;
 stat_record_t 		stat_record;
-nffile_t			nffile;
+nffile_t			*nffile;
 uint32_t 			i;
 uint32_t			maxindex, c;
 char				*string;
 
-	// Init new stat record
+	// Init 
 	memset((void *)&stat_record, 0, sizeof(stat_record_t));
 	stat_record.first_seen = 0x7fffffff;
 	stat_record.msec_first = 999;
 
 	// Init nfile handle - open file 
-	if ( !InitExportFile(filename, compress, &nffile) ) 
+	nffile = OpenNewFile(filename, NULL, compress, IsAnonymized(), &string);
+	if ( !nffile ) {
+		fprintf(stderr, "%s\n", string);
 		return;
+	}
 
-	CreateExportExtensionMaps(aggregate, bidir, &nffile);
+	CreateExportExtensionMaps(aggregate, bidir, nffile);
 
 	FlowTable = GetFlowTable();
 	c = 0;
@@ -289,7 +296,7 @@ char				*string;
  			heapSort(SortList, c, 0);
 
 		for ( i = 0; i < c; i++ ) {
-			master_record_t	flow_record;
+			master_record_t	*flow_record;
 			common_record_t *raw_record;
 			int map_id;
 
@@ -297,34 +304,35 @@ char				*string;
 			raw_record = &(r->flowrecord);
 			map_id = r->map_ref->map_id;
 
-			ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], &flow_record);
-			flow_record.dPkts 		= r->counter[INPACKETS];
-			flow_record.dOctets 	= r->counter[INBYTES];
-			flow_record.out_pkts 	= r->counter[OUTPACKETS];
-			flow_record.out_bytes 	= r->counter[OUTBYTES];
-			flow_record.aggr_flows 	= r->counter[FLOWS];
+			flow_record = &(extension_map_list.slot[map_id]->master_record);
+			ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], flow_record);
+			flow_record->dPkts 		= r->counter[INPACKETS];
+			flow_record->dOctets 	= r->counter[INBYTES];
+			flow_record->out_pkts 	= r->counter[OUTPACKETS];
+			flow_record->out_bytes 	= r->counter[OUTBYTES];
+			flow_record->aggr_flows 	= r->counter[FLOWS];
 
 			// apply IP mask from aggregation, to provide a pretty output
 			if ( FlowTable->has_masks ) {
-				flow_record.v6.srcaddr[0] &= FlowTable->IPmask[0];
-				flow_record.v6.srcaddr[1] &= FlowTable->IPmask[1];
-				flow_record.v6.dstaddr[0] &= FlowTable->IPmask[2];
-				flow_record.v6.dstaddr[1] &= FlowTable->IPmask[3];
+				flow_record->v6.srcaddr[0] &= FlowTable->IPmask[0];
+				flow_record->v6.srcaddr[1] &= FlowTable->IPmask[1];
+				flow_record->v6.dstaddr[0] &= FlowTable->IPmask[2];
+				flow_record->v6.dstaddr[1] &= FlowTable->IPmask[3];
 			}
 
 			if ( FlowTable->apply_netbits )
-				ApplyNetMaskBits(&flow_record, FlowTable->apply_netbits);
+				ApplyNetMaskBits(flow_record, FlowTable->apply_netbits);
 
 			// switch to output extension map
-			flow_record.map_ref = export_maps[map_id];
-			flow_record.ext_map = map_id;
-			PackRecord(&flow_record, &nffile);
+			flow_record->map_ref = export_maps[map_id];
+			flow_record->ext_map = map_id;
+			PackRecord(flow_record, nffile);
 #ifdef DEVEL
-			format_file_block_record((void *)&flow_record, &string, anon, 0);
+			format_file_block_record((void *)flow_record, &string, 0);
 			printf("%s\n", string);
 #endif
 			// Update statistics
-			UpdateStat(&stat_record, &flow_record);
+			UpdateStat(&stat_record, flow_record);
 		}
 
 	} else {
@@ -332,39 +340,40 @@ char				*string;
 		for ( i=0; i<FlowTable->IndexMask; i++ ) {
 			r = FlowTable->bucket[i];
 			while ( r ) {
-				master_record_t	flow_record;
+				master_record_t	*flow_record;
 				common_record_t *raw_record;
 				int map_id;
 
 				raw_record = &(r->flowrecord);
 				map_id = r->map_ref->map_id;
 
-				ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], &flow_record);
-				flow_record.dPkts 		= r->counter[INPACKETS];
-				flow_record.dOctets 	= r->counter[INBYTES];
-				flow_record.out_pkts 	= r->counter[OUTPACKETS];
-				flow_record.out_bytes 	= r->counter[OUTBYTES];
-				flow_record.aggr_flows 	= r->counter[FLOWS];
+				flow_record = &(extension_map_list.slot[map_id]->master_record);
+				ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], flow_record);
+				flow_record->dPkts 		= r->counter[INPACKETS];
+				flow_record->dOctets 	= r->counter[INBYTES];
+				flow_record->out_pkts 	= r->counter[OUTPACKETS];
+				flow_record->out_bytes 	= r->counter[OUTBYTES];
+				flow_record->aggr_flows 	= r->counter[FLOWS];
 
 				// apply IP mask from aggregation, to provide a pretty output
 				if ( FlowTable->has_masks ) {
-					flow_record.v6.srcaddr[0] &= FlowTable->IPmask[0];
-					flow_record.v6.srcaddr[1] &= FlowTable->IPmask[1];
-					flow_record.v6.dstaddr[0] &= FlowTable->IPmask[2];
-					flow_record.v6.dstaddr[1] &= FlowTable->IPmask[3];
+					flow_record->v6.srcaddr[0] &= FlowTable->IPmask[0];
+					flow_record->v6.srcaddr[1] &= FlowTable->IPmask[1];
+					flow_record->v6.dstaddr[0] &= FlowTable->IPmask[2];
+					flow_record->v6.dstaddr[1] &= FlowTable->IPmask[3];
 				}
 
 
 				// switch to output extension map
-				flow_record.map_ref = export_maps[map_id];
-				flow_record.ext_map = map_id;
-				PackRecord(&flow_record, &nffile);
+				flow_record->map_ref = export_maps[map_id];
+				flow_record->ext_map = map_id;
+				PackRecord(flow_record, nffile);
 #ifdef DEVEL
-				format_file_block_record((void *)&flow_record, &string, anon, 0);
+				format_file_block_record((void *)flow_record, &string, 0);
 				printf("%s\n", string);
 #endif
 				// Update statistics
-				UpdateStat(&stat_record, &flow_record);
+				UpdateStat(&stat_record, flow_record);
 
 				r = r->next;
 			}
@@ -372,15 +381,16 @@ char				*string;
 
 	}
 
-    if ( nffile.block_header->NumRecords ) {
-        if ( WriteBlock(&nffile) <= 0 ) {
+    if ( nffile->block_header->NumRecords ) {
+        if ( WriteBlock(nffile) <= 0 ) {
             fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
         } 
     }
 
-	CloseUpdateFile(nffile.wfd, &stat_record, nffile.file_blocks, GetIdent(), nffile.compress, &string );
+	CloseUpdateFile(nffile, &stat_record, GetIdent(), &string );
 	if ( string != NULL )
 		fprintf(stderr, "%s\n", string);
+	nffile = DisposeFile(nffile);
 
 } // End of PrintFlowTable
 

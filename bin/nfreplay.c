@@ -74,7 +74,6 @@
 #include "flist.h"
 #include "util.h"
 #include "grammar.h"
-#include "panonymizer.h"
 
 #define DEFAULTCISCOPORT "9995"
 #define DEFAULTHOSTNAME "127.0.0.1"
@@ -104,12 +103,10 @@ extension_map_list_t extension_map_list;
 /* Function Prototypes */
 static void usage(char *name);
 
-static int ParseCryptoPAnKey ( char *s, char *key );
-
 static void send_blast(unsigned int delay );
 
 static void send_data(char *rfile, time_t twin_start, time_t twin_end, uint32_t count, 
-				unsigned int delay,  int confirm, int anon, int netflow_version);
+				unsigned int delay,  int confirm, int netflow_version);
 
 static int FlushBuffer(int confirm);
 
@@ -153,34 +150,6 @@ static unsigned long cnt = 1;
 	return sendto(peer.sockfd, peer.send_buffer, len, 0, (struct sockaddr *)&(peer.addr), peer.addrlen);
 } // End of FlushBuffer
 
-static int ParseCryptoPAnKey ( char *s, char *key ) {
-int i, j;
-char numstr[3];
-
-	if ( strlen(s) == 32 ) {
-		// Key is a string
-		strncpy(key, s, 32);
-		return 1;
-	}
-
-	s[1] = tolower(s[1]);
-	numstr[2] = 0;
-	if ( strlen(s) == 66 && s[0] == '0' && s[1] == 'x' ) {
-		j = 2;
-		for ( i=0; i<32; i++ ) {
-			if ( !isxdigit((int)s[j]) || !isxdigit((int)s[j+1]) )
-				return 0;
-			numstr[0] = s[j++];
-			numstr[1] = s[j++];
-			key[i] = strtol(numstr, NULL, 16);
-		}
-		return 1;
-	}
-
-	// It's an invalid key
-	return 0;
-
-} // End of ParseCryptoPAnKey
 
 static void send_blast(unsigned int delay ) {
 common_flow_header_t	*header;
@@ -232,7 +201,7 @@ double 					fps;
 } // End of send_blast
 
 static void send_data(char *rfile, time_t twin_start, 
-			time_t twin_end, uint32_t count, unsigned int delay, int confirm, int anon, int netflow_version) {
+			time_t twin_end, uint32_t count, unsigned int delay, int confirm, int netflow_version) {
 data_block_header_t in_block_header;					
 master_record_t		master_record;
 common_record_t		*flow_record, *in_buff;
@@ -371,22 +340,6 @@ int	v1_map_done = 0;
 				}
 				// Records passed filter -> continue record processing
 
-				if ( anon ) {
-					if ( (flow_record->flags & FLAG_IPV6_ADDR ) == 0 ) {
-						master_record.v4.srcaddr = anonymize(master_record.v4.srcaddr);
-						master_record.v4.dstaddr = anonymize(master_record.v4.dstaddr);
-					} else {
-						uint64_t	anon_ip[2];
-						anonymize_v6(master_record.v6.srcaddr, anon_ip);
-						master_record.v6.srcaddr[0] = anon_ip[0];
-						master_record.v6.srcaddr[1] = anon_ip[1];
-	
-						anonymize_v6(master_record.v6.dstaddr, anon_ip);
-						master_record.v6.dstaddr[0] = anon_ip[0];
-						master_record.v6.dstaddr[1] = anon_ip[1];
-					}
-				}
-
 				if ( netflow_version == 5 ) 
 					again = Add_v5_output_record(&master_record, &peer);
 				else
@@ -460,8 +413,7 @@ int	v1_map_done = 0;
 int main( int argc, char **argv ) {
 struct stat stat_buff;
 char *rfile, *ffile, *filter, *tstring;
-char CryptoPAnKey[32];
-int c, do_anonymize, confirm, ffd, ret, blast, netflow_version;
+int c, confirm, ffd, ret, blast, netflow_version;
 unsigned int delay, count, sockbuff_size;
 time_t t_start, t_end;
 
@@ -478,7 +430,6 @@ time_t t_start, t_end;
 	count	  		= 0xFFFFFFFF;
 	sockbuff_size  	= 0;
 	netflow_version	= 5;
-	do_anonymize	= 0;
 	blast			= 0;
 	verbose			= 0;
 	confirm			= 0;
@@ -513,11 +464,8 @@ time_t t_start, t_end;
 				}
 				break;
 			case 'K':
-				if ( !ParseCryptoPAnKey(optarg, CryptoPAnKey) ) {
-					fprintf(stderr, "Invalid key '%s' for CryptoPAn!\n", optarg);
-					exit(255);
-				}
-				do_anonymize = 1;
+				fprintf(stderr, "*** Anonymization moved! Use nfanon to anonymize flows first!\n");
+				exit(255);
 				break;
 			case 'L':
 				if ( !InitLog(argv[0], optarg) )
@@ -638,10 +586,7 @@ time_t t_start, t_end;
 			exit(255);
 	}
 
-	if (do_anonymize)
-		PAnonymizer_Init((uint8_t *)CryptoPAnKey);
-
-	send_data(rfile, t_start, t_end, count, delay, confirm, do_anonymize, netflow_version);
+	send_data(rfile, t_start, t_end, count, delay, confirm, netflow_version);
 
 	return 0;
 }

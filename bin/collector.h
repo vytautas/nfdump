@@ -90,7 +90,7 @@ typedef struct FlowSource_s {
 	// all about data storage
 	char				*datadir;		// where to store data for this source
 	char				*current;		// current file name - typically nfcad.current.pid
-	nffile_t			nffile;			// the writing file handle
+	nffile_t			*nffile;		// the writing file handle
 
 	// statistical data per source
 	stat_record_t		stat_record;

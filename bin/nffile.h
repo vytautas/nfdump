@@ -72,9 +72,10 @@ typedef struct file_header_s {
 #define LAYOUT_VERSION_1	1
 
 	uint32_t	flags;				
-#define NUM_FLAGS		2
+#define NUM_FLAGS		3
 #define FLAG_COMPRESSED 	0x1
-#define FLAG_EXTENDED_STATS 0x2
+#define FLAG_ANONYMIZED 	0x2
+#define FLAG_EXTENDED_STATS 0x4
 									/*
 										0x1 File is compressed with LZO1X-1 compression
 									 */
@@ -83,7 +84,7 @@ typedef struct file_header_s {
 } file_header_t;
 
 /* FLAG_EXTENDED_STATS bit = 0 
- * Compatible with nfdump 1.5.x file format: After the file header an 
+ * Compatible with nfdump x.x.x file format: After the file header an 
  * inplicit stat record follows, which contains the statistics 
  * information about all netflow records in this file.
  */
@@ -118,9 +119,7 @@ typedef struct stat_record_s {
 } stat_record_t;
 
 /* FLAG_EXTENDED_STATS bit = 1 
- * nfdump 1.6.x file format: Extended stat record.
- * The extended stat record is identified by a header describing it's type and length
- * various extension may add specific stats.
+ * not yet implemented
  */
 
 typedef struct stat_header_s {
@@ -157,10 +156,10 @@ typedef struct data_block_header_s {
  * Generic fle handle for writing files
  */
 typedef struct nffile_s {
+	file_header_t		*file_header;	// file header
 	data_block_header_t	*block_header;	// output buffer
 	void				*writeto;		// pointer into buffer for next availabe memory
-	uint32_t			file_blocks;	// number of blocks in file
-	int					compress;		// data compressed flag
+	int					_compress;		// data compressed flag
 	int					wfd;			// file id
 } nffile_t;
 
@@ -1354,7 +1353,7 @@ void SumStatRecords(stat_record_t *s1, stat_record_t *s2);
 
 int OpenFile(char *filename, stat_record_t **stat_record, char **err);
 
-int OpenNewFile(char *filename, char **err, int compressed);
+nffile_t *OpenNewFile(char *filename, nffile_t *nffile, int compressed, int anonymized, char **err);
 
 int ChangeIdent(char *filename, char *Ident, char **err);
 
@@ -1362,7 +1361,11 @@ void PrintStat(stat_record_t *s);
 
 void QueryFile(char *filename);
 
-void CloseUpdateFile(int fd, stat_record_t *stat_record, uint32_t record_count, char *ident, int compressed, char **err );
+nffile_t *NewFile(void);
+
+nffile_t *DisposeFile(nffile_t *nffile);
+
+void CloseUpdateFile(nffile_t *nffile, stat_record_t *stat_record, char *ident, char **err );
 
 int ReadBlock(int rfd, data_block_header_t *block_header, void *read_buff, char **err);
 
@@ -1372,7 +1375,9 @@ void UnCompressFile(char * filename);
 
 char *GetIdent(void);
 
-int InitExportFile(char *filename, int compress, nffile_t *nffile );
+int IsCompressed(void);
+
+int IsAnonymized(void);
 
 void ExpandRecord_v1(common_record_t *input_record,master_record_t *output_record );
 

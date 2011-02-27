@@ -1,0 +1,49 @@
+--- sflow.c.orig	2009-11-18 07:18:25.000000000 +0100
++++ sflow.c	2009-11-17 19:27:42.000000000 +0100
+@@ -1067,7 +1067,6 @@
+ 		extension_map = sflow_extension_info[ip_flags].map;
+ 	}
+ 
+-	common_record = (common_record_t *)fs->nffile.writeto;
+ 
+ 	// output buffer size check
+ 	// IPv6 needs 2 x 128 bytes, IPv4 2 x 4 bytes
+@@ -1078,6 +1077,8 @@
+ 		return;
+ 	}
+ 
++	common_record = (common_record_t *)fs->nffile.writeto;
++
+ 	common_record->size			= sflow_output_record_size[ip_flags] + ipsize;
+ 	common_record->type			= CommonRecordType;
+ 	common_record->flags		= 0;
+@@ -1283,7 +1284,7 @@
+ 	fs->nffile.block_header->size 		+= (sflow_output_record_size[ip_flags] + ipsize);
+ #ifdef DEVEL
+ 	if ( (next_data - fs->nffile.writeto) != (sflow_output_record_size[ip_flags] + ipsize) ) {
+-		printf("PANIC: Size error. Buffer diff: %ull, Size: %u\n", 
++		printf("PANIC: Size error. Buffer diff: %llu, Size: %u\n", 
+ 			(unsigned long long)(next_data - fs->nffile.writeto), 
+ 			(sflow_output_record_size[ip_flags] + ipsize));
+ 		exit(255);
+@@ -2328,7 +2329,8 @@
+ 	default: receiveError(sample, "unknown INMCOUNTERSVERSION", YES); break;
+ 	}
+ 	/* line-by-line output... */
+-	writeCountersLine(sample);
++	if ( verbose )
++		writeCountersLine(sample);
+ }
+ 
+ /*_________________---------------------------__________________
+@@ -2385,7 +2387,9 @@
+ 	}
+ 	lengthCheck(sample, "counters_sample", sampleStart, sampleLength);
+ 	/* line-by-line output... */
+-	writeCountersLine(sample);
++	if ( verbose )
++		writeCountersLine(sample);
++
+ }
+ 
+ /*_________________---------------------------__________________

@@ -73,9 +73,6 @@ static char const *rcsid 		  = "$Id: nfprofile.c 39 2009-11-25 08:11:15Z haag $"
 
 extension_map_list_t extension_map_list;
 
-/* exported fuctions */
-void LogError(char *format, ...);
-
 /* Function Prototypes */
 static void usage(char *name);
 
@@ -185,9 +182,9 @@ int	v1_map_done = 0;
 				if ( Insert_Extension_Map(&extension_map_list, map) ) {
 					int j;
 					for ( j=0; j < num_channels; j++ ) {
-						if ( channels[j].nffile.wfd > 0 ) {
+						if ( channels[j].nffile != NULL) {
 							// flush new map
-							AppendToBuffer(&channels[j].nffile, (void *)map, map->size);
+							AppendToBuffer(channels[j].nffile, (void *)map, map->size);
 						}
 					}
 				} // else map already known and flushed
@@ -240,9 +237,9 @@ int	v1_map_done = 0;
 
 					// do we need to write data to new file - shadow profiles do not have files.
 					// check if we need to flush the output buffer
-					if ( channels[j].nffile.wfd > 0 ) {
+					if ( channels[j].nffile != NULL ) {
 						// write record to output buffer
-						AppendToBuffer(&channels[j].nffile, (void *)flow_record, flow_record->size);
+						AppendToBuffer(channels[j].nffile, (void *)flow_record, flow_record->size);
 					} 
 
 				} // End of for all channels
@@ -253,9 +250,9 @@ int	v1_map_done = 0;
 				if ( Insert_Extension_Map(&extension_map_list, map) ) {
 					int j;
 					for ( j=0; j < num_channels; j++ ) {
-						if ( channels[j].nffile.wfd > 0 ) {
+						if ( channels[j].nffile != NULL ) {
 							// flush new map
-							AppendToBuffer(&channels[j].nffile, (void *)map, map->size);
+							AppendToBuffer(channels[j].nffile, (void *)map, map->size);
 						}
 					}
 				} // else map already known and flushed
@@ -272,15 +269,13 @@ int	v1_map_done = 0;
 
 	// do we need to write data to new file - shadow profiles do not have files.
 	for ( j=0; j < num_channels; j++ ) {
-		if ( channels[j].nffile.wfd > 0 ) {
+		if ( channels[j].nffile != NULL ) {
 			// flush output buffer
-			if ( channels[j].nffile.block_header->NumRecords ) {
-				if ( WriteBlock(&(channels[j].nffile)) <= 0 ) {
+			if ( channels[j].nffile->block_header->NumRecords ) {
+				if ( WriteBlock(channels[j].nffile) <= 0 ) {
 					LogError("Failed to write output buffer to disk: '%s'" , strerror(errno));
 				} else {
-					free((void *)channels[j].nffile.block_header);
-					channels[j].nffile.writeto = NULL;
-					channels[j].nffile.file_blocks++;
+					channels[j].nffile->file_header->NumBlocks++;
 				}
 			} 
 		}

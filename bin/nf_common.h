@@ -40,7 +40,7 @@
 #define _NF_COMMON_H 1
 
 
-typedef void (*printer_t)(void *, char **, int, int);
+typedef void (*printer_t)(void *, char **, int);
 
 #if ( SIZEOF_VOID_P == 8 )
 typedef uint64_t	pointer_addr_t;
@@ -92,7 +92,7 @@ int Getv6Mode(void);
 
 int Proto_num(char *protostr);
 
-void format_file_block_header(void *header, char **s, int anon, int tag);
+void format_file_block_header(void *header, char **s, int tag);
 
 char *format_csv_header(void);
 
@@ -100,15 +100,15 @@ char *get_record_header(void);
 
 void set_record_header(void);
 
-void format_file_block_record(void *record, char **s, int anon, int tag);
+void format_file_block_record(void *record, char **s, int tag);
 
-void flow_record_to_pipe(void *record, char ** s, int anon, int tag);
+void flow_record_to_pipe(void *record, char ** s, int tag);
 
-void flow_record_to_csv(void *record, char ** s, int anon, int tag);
+void flow_record_to_csv(void *record, char ** s, int tag);
 
 int ParseOutputFormat(char *format, int plain_numbers);
 
-void format_special(void *record, char ** s, int anon, int tag);
+void format_special(void *record, char ** s, int tag);
 
 
 uint32_t Get_fwd_status_id(char *status);
