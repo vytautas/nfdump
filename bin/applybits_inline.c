@@ -78,3 +78,14 @@ static inline void ApplyNetMaskBits(master_record_t *flow_record, int apply_netb
 
 } // End of ApplyNetMaskBits
 
+static inline void ApplyAggrMask(master_record_t *record, master_record_t *mask) {
+uint64_t *r = (uint64_t *)record;
+uint64_t *m = (uint64_t *)mask;
+int i, max_offset;
+
+	max_offset = offsetof(master_record_t, map_ref) >> 3;
+	for (i=2; i<max_offset; i++) {
+		r[i] &= m[i];
+	}
+
+} // End of ApplyAggrMask

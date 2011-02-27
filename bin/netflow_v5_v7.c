@@ -187,12 +187,13 @@ uint16_t	map_size;
 static inline exporter_v5_t *GetExporter(FlowSource_t *fs, netflow_v5_header_t *header) {
 exporter_v5_t **e = (exporter_v5_t **)&(fs->exporter_data);
 uint16_t	engine_tag = ntohs(header->engine_tag);
+uint16_t	version    = ntohs(header->version);
 #define IP_STRING_LEN   40
 char ipstr[IP_STRING_LEN];
 
 	// search the appropriate exporter engine
 	while ( *e ) {
-		if ( (*e)->version == 5 && (*e)->engine_tag == engine_tag &&
+		if ( (*e)->version == version && (*e)->engine_tag == engine_tag &&
 			 (*e)->ip.v6[0] == fs->ip.v6[0] && (*e)->ip.v6[1] == fs->ip.v6[1]) 
 			return *e;
 		e = &((*e)->next);
@@ -213,7 +214,7 @@ char ipstr[IP_STRING_LEN];
 	(*e)->sampling_mode		= (0xC000 & ntohs(header->sampling_interval)) >> 14;
 	(*e)->sampling_interval	= 0x3fff & ntohs(header->sampling_interval);
 	(*e)->next	 			= NULL;
-	(*e)->version	 		= 5;
+	(*e)->version	 		= version;
 	(*e)->first	 			= 1;
 
 	// default is global default_sampling ( user defined or unsampled => 1 )
@@ -350,10 +351,9 @@ char		*string;
 #define delta(a,b) ( (a)>(b) ? (a)-(b) : (b)-(a) )
 					fs->stat_record.sequence_failure++;
 					/*
-						syslog(LOG_ERR,"Flow sequence mismatch. Missing: %lli flows", delta(last_count,distance));
-						syslog(LOG_ERR,"sequence %llu. last sequence: %lli", sequence, last_sequence);
-					if ( report_seq ) 
-						syslog(LOG_ERR,"Flow sequence mismatch. Missing: %lli flows", delta(last_count,distance));
+					syslog(LOG_ERR,"Flow v%d sequence last:%llu now:%llu mismatch. Missing: dist:%lu flows",
+						version, exporter->last_sequence, exporter->sequence, exporter->distance);
+
 					*/
 				}
 			}
@@ -451,19 +451,21 @@ char		*string;
 	  			First	 				= ntohl(v5_record->First);
 	  			Last		 			= ntohl(v5_record->Last);
 
-				if ( First > Last )
+
+#ifdef FIXTIMEBUG
+				// assume bug, some users reported - swap time stamps
+				if ( First > Last && ( (First - Last)  < 20000) ) {
+					uint32_t _t;
+					syslog(LOG_ERR,"Process_v5: Unexpected time swap: First 0x%llx smaller than boot time: 0x%llx", start_time, boot_time);
+					_t= First;
+					First = Last;
+					Last = _t;
+				}
+#endif
+				if ( First > Last ) {
 					/* First in msec, in case of msec overflow, between start and end */
 					start_time = boot_time - 0x100000000LL + (uint64_t)First;
-					if ( start_time < boot_time ) {
-						uint32_t _t;
-						syslog(LOG_ERR,"Process_v5: Unexpected time swap: First 0x%xll smaller than boot time: 0x%xll", start_time, boot_time);
-						// assume bug, some users reported - swap time stamps
-						_t= First;
-						First = Last;
-						Last = _t;
-						start_time = (uint64_t)First + boot_time;
-					}
-				else
+				} else
 					start_time = (uint64_t)First + boot_time;
 		
 				/* end time in msecs */

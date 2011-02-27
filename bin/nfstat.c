@@ -1134,12 +1134,14 @@ struct tm	*tbuff;
 void PrintFlowTable(printer_t print_record, uint32_t limitflows, int date_sorted, int tag, int GuessDir) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
+master_record_t		*aggr_record_mask;
 SortElement_t 		*SortList;
 uint32_t 			i;
 uint32_t			maxindex, c;
 char				*string;
 
 	FlowTable = GetFlowTable();
+	aggr_record_mask = GetMasterAggregateMask();
 	c = 0;
 	maxindex = FlowTable->NumRecords;
 	if ( date_sorted ) {
@@ -1214,6 +1216,10 @@ char				*string;
 				flow_record->v6.dstaddr[1] &= FlowTable->IPmask[3];
 			}
 
+			if ( aggr_record_mask ) {
+				ApplyAggrMask(flow_record, aggr_record_mask);
+			}
+
 			if ( GuessDir && ( flow_record->srcport < 1024 && flow_record->dstport > 1024 ) )
 				SwapFlow(flow_record);
 			print_record((void *)flow_record, &string, tag);
@@ -1268,6 +1274,9 @@ char				*string;
 					flow_record->v6.dstaddr[1] &= FlowTable->IPmask[3];
 				}
 
+				if ( aggr_record_mask ) {
+					ApplyAggrMask(flow_record, aggr_record_mask);
+				}
 				if ( GuessDir && ( flow_record->srcport < 1024 && flow_record->dstport > 1024 ) )
 					SwapFlow(flow_record);
 				print_record((void *)flow_record, &string, tag);

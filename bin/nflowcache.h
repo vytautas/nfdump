@@ -144,4 +144,6 @@ int SetBidirAggregation( void );
 
 int ParseAggregateMask( char *arg, char **aggr_fmt  );
 
+master_record_t *GetMasterAggregateMask(void);
+
 #endif //_NFLOWCACHE_H

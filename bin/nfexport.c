@@ -242,6 +242,7 @@ FlowTableRecord_t	*r;
 SortElement_t 		*SortList;
 stat_record_t 		stat_record;
 nffile_t			*nffile;
+master_record_t		*aggr_record_mask;
 uint32_t 			i;
 uint32_t			maxindex, c;
 char				*string;
@@ -259,6 +260,8 @@ char				*string;
 	}
 
 	CreateExportExtensionMaps(aggregate, bidir, nffile);
+
+	aggr_record_mask = GetMasterAggregateMask();
 
 	FlowTable = GetFlowTable();
 	c = 0;
@@ -323,6 +326,10 @@ char				*string;
 			if ( FlowTable->apply_netbits )
 				ApplyNetMaskBits(flow_record, FlowTable->apply_netbits);
 
+			if ( aggr_record_mask ) {
+				ApplyAggrMask(flow_record, aggr_record_mask);
+			}
+
 			// switch to output extension map
 			flow_record->map_ref = export_maps[map_id];
 			flow_record->ext_map = map_id;
@@ -363,6 +370,12 @@ char				*string;
 					flow_record->v6.dstaddr[1] &= FlowTable->IPmask[3];
 				}
 
+				if ( FlowTable->apply_netbits )
+					ApplyNetMaskBits(flow_record, FlowTable->apply_netbits);
+
+				if ( aggr_record_mask ) {
+					ApplyAggrMask(flow_record, aggr_record_mask);
+				}
 
 				// switch to output extension map
 				flow_record->map_ref = export_maps[map_id];

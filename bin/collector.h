@@ -66,6 +66,7 @@ typedef struct option_offset_s {
 	// sampling offsets
 #define HAS_SAMPLER_DATA	1
 	uint16_t	offset_id;
+	uint16_t	sampler_id_length;
 	uint16_t	offset_mode;
 	uint16_t	offset_interval;
 
@@ -133,7 +134,8 @@ int AddExtensionMap(FlowSource_t *fs, extension_map_t *map);
 
 void FlushExtensionMaps(FlowSource_t *fs);
 
-void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t offset_sampler_mode, uint16_t offset_sampler_interval);
+void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t sampler_id_length, 
+	uint16_t offset_sampler_mode, uint16_t offset_sampler_interval);
 
 void InsertStdSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_std_sampler_interval, uint16_t offset_std_sampler_algorithm);
 

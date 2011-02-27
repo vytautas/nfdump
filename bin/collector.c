@@ -341,7 +341,8 @@ int i;
 
 } // End of FlushExtensionMaps
 
-void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t offset_sampler_mode, uint16_t offset_sampler_interval) {
+void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t sampler_id_length, 
+	uint16_t offset_sampler_mode, uint16_t offset_sampler_interval) {
 option_offset_t	**t;
 
 	t = &(fs->option_offset_table);
@@ -361,7 +362,7 @@ option_offset_t	**t;
 			fprintf(stderr, "malloc() allocation error: %s\n", strerror(errno));
 			return ;
 		} 
-		syslog(LOG_ERR, "Process_v9: New sampler at offsets: ID %i, mode: %i, interval: %i", 
+		dbg_printf("Process_v9: New sampler at offsets: ID %i, mode: %i, interval: %i", 
 			offset_sampler_id, offset_sampler_mode, offset_sampler_interval);
 	}	// else existing table
 
@@ -369,6 +370,7 @@ option_offset_t	**t;
 	SetFlag((*t)->flags, HAS_SAMPLER_DATA);
 	(*t)->id 				= id;
 	(*t)->offset_id			= offset_sampler_id;
+	(*t)->sampler_id_length	= sampler_id_length;
 	(*t)->offset_mode		= offset_sampler_mode;
 	(*t)->offset_interval	= offset_sampler_interval;
 	(*t)->offset_std_sampler_interval	= 0;
@@ -396,7 +398,7 @@ option_offset_t	**t;
 			fprintf(stderr, "malloc() allocation error: %s\n", strerror(errno));
 			return ;
 		} 
-		syslog(LOG_ERR, "Process_v9: New std sampler at offsets: interval: %i, algorithm: %i", 
+		syslog(LOG_ERR, "Process_v9: New std sampler: interval: %i, algorithm: %i", 
 			offset_std_sampler_interval, offset_std_sampler_algorithm);
 	}	// else existing table
 

@@ -108,6 +108,7 @@ typedef struct input_translation_s {
 	uint32_t    byte_offset;
 	uint32_t	ICMP_offset;
 	uint32_t	sampler_offset;
+	uint32_t	sampler_size;
 	uint32_t	router_ip_offset;
 	uint32_t	engine_offset;
 	uint32_t	extension_map_changed;
@@ -197,7 +198,7 @@ static struct element_info_s {
 	{ 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, 
 	
 	// 48 - 54   not implemented
-	{ 1, 1, 0}, 	// 48 - NF9_FLOW_SAMPLER_ID
+	{ 1, 2, 0}, 	// 48 - NF9_FLOW_SAMPLER_ID
 	{ 1, 1, 0}, 	// 49 - FLOW_SAMPLER_MODE
 	{ 4, 4, 0}, 	// 50 - NF9_FLOW_SAMPLER_RANDOM_INTERVAL
 
@@ -546,6 +547,7 @@ size_t				size_required;
 	table->flags		= 0;
 	table->ICMP_offset	= 0;
 	table->sampler_offset 	= 0;
+	table->sampler_size 	= 0;
 	table->engine_offset 	= 0;
 	table->router_ip_offset = 0;
 
@@ -806,11 +808,17 @@ size_t				size_required;
 	if ( input_template[NF9_FLOW_SAMPLER_ID].offset != 0 ) {
 		if ( input_template[NF9_FLOW_SAMPLER_ID].length == 1 ) {
 			table->sampler_offset = input_template[NF9_FLOW_SAMPLER_ID].offset;
-			dbg_printf("Sampling ID included at offset %u\n", table->sampler_offset);
-		} else {
+			table->sampler_size = 1;
+			dbg_printf("1 byte Sampling ID included at offset %u\n", table->sampler_offset);
+		} else if ( input_template[NF9_FLOW_SAMPLER_ID].length == 2 ) {
+			table->sampler_offset = input_template[NF9_FLOW_SAMPLER_ID].offset;
+			table->sampler_size = 2;
+			dbg_printf("2 byte Sampling ID included at offset %u\n", table->sampler_offset);
+		}  else {
 			syslog(LOG_ERR, "Process_v9: Unexpected SAMPLER ID field length: %d", 
 				input_template[NF9_FLOW_SAMPLER_ID].length);
-			dbg_printf("Sampling ID included\n");
+			dbg_printf("Unexpected SAMPLER ID field length: %d", 
+				input_template[NF9_FLOW_SAMPLER_ID].length);
 		}
 	} else {
 		dbg_printf("No Sampling ID found\n");
@@ -947,7 +955,7 @@ int			i;
 static inline void Process_v9_option_templates(exporter_domain_t *exporter, void *option_template_flowset, FlowSource_t *fs) {
 void		*option_template, *p;
 uint32_t	size_left, nr_scopes, nr_options, i;
-uint16_t	id, scope_length, option_length, offset;
+uint16_t	id, scope_length, option_length, offset, sampler_id_length;
 uint16_t	offset_sampler_id, offset_sampler_mode, offset_sampler_interval, found_sampler;
 uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sampling;
 
@@ -982,13 +990,14 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 	dbg_printf("\n[%u] Option Template ID: %u\n", exporter->exporter_id, id);
 	dbg_printf("Scope length: %u Option length: %u\n", scope_length, option_length);
 
-	offset_sampler_id 				= 0;
-	offset_sampler_mode 			= 0;
-	offset_sampler_interval 		= 0;
+	sampler_id_length			 = 0;
+	offset_sampler_id 			 = 0;
+	offset_sampler_mode			 = 0;
+	offset_sampler_interval 	 = 0;
 	offset_std_sampler_interval  = 0;
 	offset_std_sampler_algorithm = 0;
-	found_sampler					= 0;
-	found_std_sampling			= 0;
+	found_sampler				 = 0;
+	found_std_sampling			 = 0;
 	offset = 0;
 
 	p = option_template + 6;	// start of length/type data
@@ -1007,6 +1016,11 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 		uint16_t type 	= Get_val16(p); p = p + 2;
 		uint16_t length = Get_val16(p); p = p + 2;
 		dbg_printf("Option field Type: %u, length %u\n", type, length);
+		if ( element_info[type].min && CheckElementLength(type, length) == 0 ) {
+			syslog(LOG_ERR,"Process_v9: Option field Type: %u, length %u not supported\n", type, length);
+			dbg_printf("Process_v9: Option field Type: %u, length %u not supported\n", type, length);
+			continue;
+		}
 		switch (type) {
 			// general sampling
 			case NF9_SAMPLING_INTERVAL:
@@ -1021,6 +1035,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 			// individual samplers
 			case NF9_FLOW_SAMPLER_ID:
 				offset_sampler_id = offset;
+				sampler_id_length = length;
 				found_sampler++;
 				break;
 			case FLOW_SAMPLER_MODE:
@@ -1037,7 +1052,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 
 	if ( found_sampler == 3 ) { // need all three tags
 		dbg_printf("[%u] Sampling information found\n", exporter->exporter_id);
-		InsertSamplerOffset(fs, id, offset_sampler_id, offset_sampler_mode, offset_sampler_interval);
+		InsertSamplerOffset(fs, id, offset_sampler_id, sampler_id_length, offset_sampler_mode, offset_sampler_interval);
 	} else if ( found_std_sampling == 2 ) { // need all two tags
 		dbg_printf("[%u] Std sampling information found\n", exporter->exporter_id);
 		InsertStdSamplerOffset(fs, id, offset_std_sampler_interval, offset_std_sampler_algorithm);
@@ -1045,6 +1060,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 		dbg_printf("[%u] No Sampling information found\n", exporter->exporter_id);
 	}
 	dbg_printf("\n");
+	processed_records++;
 
 } // End of Process_v9_option_templates
 
@@ -1065,7 +1081,12 @@ char				*string;
 
 	// Check if sampling is announced
 	if ( table->sampler_offset && fs->sampler  ) {
-		uint8_t sampler_id = in[table->sampler_offset];
+		uint32_t sampler_id;
+		if ( table->sampler_size == 2 ) {
+			sampler_id = Get_val16((void *)&in[table->sampler_offset]);
+		} else {
+			sampler_id = in[table->sampler_offset];
+		}
 		if ( fs->sampler[sampler_id] ) {
 			sampling_rate = fs->sampler[sampler_id]->interval;
 			dbg_printf("[%u] Sampling ID %u available\n", exporter->exporter_id, sampler_id);
@@ -1419,7 +1440,11 @@ uint8_t		*in;
 
 	if ( TestFlag(offset_table->flags, HAS_SAMPLER_DATA) ) {
 		sampler.table_id = id;
-		sampler_id 	 	 = in[offset_table->offset_id];
+		if (offset_table->sampler_id_length == 2) {
+			sampler_id 	 	 = Get_val16((void *)&in[offset_table->offset_id]);
+		} else {
+			sampler_id 	 	 = in[offset_table->offset_id];
+		}
 		sampler.mode 	 = in[offset_table->offset_mode];
 		sampler.interval = Get_val32((void *)&in[offset_table->offset_interval]); 
 	
@@ -1445,7 +1470,8 @@ uint8_t		*in;
 		dbg_printf("Set std sampler: algorithm: %u, interval: %u\n", 
 				fs->std_sampling.mode, fs->std_sampling.interval);
 	}
-
+	processed_records++;
+			
 } // End of Process_v9_option_data
 
 void Process_v9(void *in_buff, ssize_t in_buff_cnt, FlowSource_t *fs) {
@@ -1461,6 +1487,7 @@ static int pkg_num = 0;
 	pkg_num++;
 	size_left = in_buff_cnt;
 	if ( size_left < NETFLOW_V9_HEADER_LENGTH ) {
+		syslog(LOG_ERR, "Process_v9: Too little data for v9 packets: '%lli'", (long long)size_left);
 		syslog(LOG_ERR, "Process_v9: Too little data for v9 packets: '%lli'", (long long)size_left);
 		return;
 	}

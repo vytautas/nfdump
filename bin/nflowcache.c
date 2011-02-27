@@ -162,6 +162,7 @@ typedef struct Default_key_s {
 	uint32_t proto;
 } Default_key_t;
 
+
 static aggregate_param_t *aggregate_stack = NULL;
 static uint32_t	aggregate_key_len 		  = sizeof(Default_key_t);
 static uint32_t	bidir_flows				  = 0;
@@ -188,7 +189,6 @@ static inline int TimeMsec_CMP(time_t t1, uint16_t offset1, time_t t2, uint16_t 
 		// both times are the same
 		return 0;
 } // End of TimeMsec_CMP
-
 
 static int MemoryHandle_init(MemoryHandle_t *handle) {
 
@@ -812,6 +812,44 @@ struct aggregate_info_s *a;
 
 	return 1;
 } // End of ParseAggregateMask
+
+master_record_t *GetMasterAggregateMask(void) {
+master_record_t *aggr_record_mask;
+
+	if ( aggregate_stack ) {
+		uint64_t *r;
+		aggregate_param_t *aggr_param = aggregate_stack;
+
+		aggr_record_mask = (master_record_t *)malloc(sizeof(master_record_t));
+		if ( !aggr_record_mask ) {
+			fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+			return 0;
+		}
+
+		r = (uint64_t *)aggr_record_mask;
+		memset((void *)aggr_record_mask, 0, sizeof(master_record_t));
+		while ( aggr_param->size ) {
+			int offset = aggr_param->offset;
+			r[offset] |= aggr_param->mask;
+			aggr_param++;
+		}
+
+		// not really needed, but preset it anyway
+		r[0] = 0xffffffffffffffffLL;
+		r[1] = 0xffffffffffffffffLL;
+		aggr_record_mask->dPkts   	= 0xffffffffffffffffLL;
+		aggr_record_mask->dOctets 	= 0xffffffffffffffffLL;
+		aggr_record_mask->out_pkts   = 0xffffffffffffffffLL;
+		aggr_record_mask->out_bytes  = 0xffffffffffffffffLL;
+		aggr_record_mask->aggr_flows = 0xffffffffffffffffLL;
+		aggr_record_mask->last    	= 0xffffffff;
+		
+		return aggr_record_mask;
+	} else {
+		return NULL;
+	}
+
+} // End of GetMasterAggregateMask
 
 static inline void New_Hash_Key(void *keymem, master_record_t *flow_record, int swap_flow) {
 uint64_t *record = (uint64_t *)flow_record;

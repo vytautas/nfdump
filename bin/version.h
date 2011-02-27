@@ -29,18 +29,18 @@
  *  
  *  $Author: peter $
  *
- *  $Id: version.h 19 2011-01-09 11:28:32Z peter $
+ *  $Id: version.h 23 2011-02-26 11:49:02Z peter $
  *
- *  $LastChangedRevision: 19 $
+ *  $LastChangedRevision: 23 $
  *	
  *
  */
  
 #ifndef _VERSION_H
 #define _VERSION_H 1
- 
+
 const char *nfdump_version = VERSION;
 
-const char *nfdump_date	   = "$LastChangedDate: 2011-01-09 12:28:32 +0100 (Sun, 09 Jan 2011) $";
+const char *nfdump_date	   = "$LastChangedDate: 2011-02-26 12:49:02 +0100 (Sat, 26 Feb 2011) $";
 
 #endif //_VERSION_H

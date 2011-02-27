@@ -1,3 +1,10 @@
+2011-02-26
+- Fix timebug fix :(, make it a compile time option
+- fix v7 sequence errors
+
+2011-02-15
+- Zero out unused fields after aggregation
+
 2011-02-05
 - Fix SysUptime 32bit overflow in v5 header
 - Add fix for strange first/last swap reported by some users.
