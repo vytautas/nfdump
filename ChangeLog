@@ -1,4 +1,15 @@
-2011-02-26
+2011-07-11 1.6.4
+- some code restructuring - prepare for IPFIX module
+- Add netflow v1 module. Some routers still use that
+- Add %sn, %dn output tags for src/dst networks
+- Fix buffer length check in v5.
+- Fix export bug: include last flow cache bucket, when exporting
+- number in all filter expressions accept hex values
+- fix an sflow colletor bug. Missing extension maps in rotated files
+- implement extended statistics. Currently ports and bpp distribution
+  vectors can be collected automatically be nfcapd. Still experimental
+
+2011-02-26 1.6.3p1
 - Fix timebug fix :(, make it a compile time option
 - fix v7 sequence errors
 

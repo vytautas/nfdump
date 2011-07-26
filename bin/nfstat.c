@@ -57,6 +57,7 @@
 #include "nffile.h"
 #include "nfx.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "nfnet.h"
 #include "netflow_v5_v7.h"
@@ -89,7 +90,7 @@ struct StatParameter_s {
 } StatParameters[] ={
 	// flow record stat
 	{ "record",	 "", 			
-		{ {0,0, 0},											{0,0,0} },
+		{ {0,0, 0,0},										{0,0,0,0} },
 			1, 0},
 
 	// 9 possible flow element stats 
@@ -815,7 +816,7 @@ StatRecord_t	*record;
 
 void AddStat(common_record_t *raw_record, master_record_t *flow_record ) {
 StatRecord_t		*stat_record;
-uint64_t			value[2];
+uint64_t			value[2][2];
 int	j, i;
 
 	// for every requested -s stat do
@@ -827,11 +828,18 @@ int	j, i;
 			uint64_t mask	= StatParameters[stat].element[i].mask;
 			uint32_t shift	= StatParameters[stat].element[i].shift;
 
-			value[1] = (((uint64_t *)flow_record)[offset] & mask) >> shift;
+			value[i][1] = (((uint64_t *)flow_record)[offset] & mask) >> shift;
 			offset = StatParameters[stat].element[i].offset0;
-			value[0] = offset ? ((uint64_t *)flow_record)[offset] : 0;
+			value[i][0] = offset ? ((uint64_t *)flow_record)[offset] : 0;
 
-			stat_record = stat_hash_lookup(value, flow_record->prot, j);
+			/* 
+			 * make sure each flow is counted once only
+			 * if src and dst have the same values, count it once only
+			 */
+			if ( i == 1 && value[0][0] == value[1][0] && value[0][1] == value[1][1] ) {
+				break;
+			}
+			stat_record = stat_hash_lookup(value[i], flow_record->prot, j);
 			if ( stat_record ) {
 				stat_record->counter[INBYTES] 	+= flow_record->dOctets;
 				stat_record->counter[INPACKETS] += flow_record->dPkts;
@@ -845,9 +853,9 @@ int	j, i;
 					stat_record->msec_last 	= flow_record->msec_last;
 				}
 				stat_record->counter[FLOWS]++;
-		
+
 			} else {
-				stat_record = stat_hash_insert(value, flow_record->prot, j);
+				stat_record = stat_hash_insert(value[i], flow_record->prot, j);
 		
 				stat_record->counter[INBYTES]   = flow_record->dOctets;
 				stat_record->counter[INPACKETS]	= flow_record->dPkts;

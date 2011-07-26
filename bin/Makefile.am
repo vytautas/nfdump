@@ -32,13 +32,14 @@ AM_CFLAGS = -ggdb
 
 common =  nf_common.c nf_common.h version.h 
 util = util.c util.h
-filelzo = minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c nffile.h nfx.c nfx.h
+filelzo = minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c nffile.h nfx.c nfx.h nfxstat.h nfxstat.c
 nflist = flist.c flist.h fts_compat.c fts_compat.h
 filter = grammar.y scanner.l nftree.c nftree.h ipconv.c ipconv.h rbtree.h
 nfprof = nfprof.c nfprof.h
 nfnet = nfnet.c nfnet.h
 anon = panonymizer.c panonymizer.h rijndael.c rijndael.h
 collector = collector.c collector.h
+nfv1 = netflow_v1.c netflow_v1.h
 nfv9 = netflow_v9.c netflow_v9.h
 nfv5v7 = netflow_v5_v7.c netflow_v5_v7.h
 nfstatfile = nfstatfile.c nfstatfile.h
@@ -52,7 +53,7 @@ nfdump_SOURCES = nfdump.c nfdump.h nfstat.c nfstat.h nfexport.c nfexport.h \
 
 nfreplay_SOURCES = nfreplay.c \
 	$(common) $(util) $(filelzo) $(nflist) $(filter) $(nfprof) \
-	$(nfnet) $(collector) $(nfv9) $(nfv5v7)
+	$(nfnet) $(collector) $(nfv1) $(nfv9) $(nfv5v7)
 
 nfprofile_SOURCES = nfprofile.c profile.c profile.h \
 	$(common) $(util) $(filelzo) $(nflist) $(filter) $(nfstatfile)
@@ -65,7 +66,7 @@ nftrack_LDADD = -lrrd
 
 nfcapd_SOURCES = nfcapd.c \
 	$(common) $(util) $(filelzo) $(nflist) $(nfstatfile) $(launch) \
-	$(nfnet) $(collector) $(nfv9) $(nfv5v7) $(bookkeeper) $(expire)
+	$(nfnet) $(collector) $(nfv1) $(nfv9) $(nfv5v7) $(bookkeeper) $(expire)
 
 if READPCAP
 nfcapd_CFLAGS = -DPCAP

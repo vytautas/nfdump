@@ -71,6 +71,7 @@
 
 #include "expire.h"
 #include "nffile.h"
+#include "nfxstat.h"
 #include "collector.h"
 
 static int done, launch, child_exit;

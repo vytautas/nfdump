@@ -46,8 +46,8 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include <arpa/inet.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
@@ -59,6 +59,7 @@
 #include "nf_common.h"
 #include "util.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "netflow_v5_v7.h"
 #include "netflow_v9.h"
@@ -104,6 +105,8 @@ typedef struct input_translation_s {
 	uint32_t	output_record_size;
 	uint32_t	input_index;
 	uint32_t	zero_index;
+	uint32_t	src_as_offset;
+	uint32_t	dst_as_offset;
 	uint32_t    packet_offset;
 	uint32_t    byte_offset;
 	uint32_t	ICMP_offset;
@@ -197,7 +200,6 @@ static struct element_info_s {
 	// 40 - 47   not implemented
 	{ 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, { 0, 0, 0}, 
 	
-	// 48 - 54   not implemented
 	{ 1, 2, 0}, 	// 48 - NF9_FLOW_SAMPLER_ID
 	{ 1, 1, 0}, 	// 49 - FLOW_SAMPLER_MODE
 	{ 4, 4, 0}, 	// 50 - NF9_FLOW_SAMPLER_RANDOM_INTERVAL
@@ -547,7 +549,7 @@ size_t				size_required;
 	table->flags		= 0;
 	table->ICMP_offset	= 0;
 	table->sampler_offset 	= 0;
-	table->sampler_size 	= 0;
+	table->sampler_size		= 0;
 	table->engine_offset 	= 0;
 	table->router_ip_offset = 0;
 
@@ -645,11 +647,15 @@ size_t				size_required;
 			case EX_AS_2:
 			case EX_AS_4:
 				if ( input_template[NF9_SRC_AS].length <= 2 || input_template[NF9_DST_AS].length <= 2) {
+					table->src_as_offset = offset;
 					FillElement( table, NF9_SRC_AS, &offset);
+					table->dst_as_offset = offset;
 					FillElement( table, NF9_DST_AS, &offset);
 					map_index = EX_AS_2;
 				} else {
+					table->src_as_offset = offset;
 					FillElement( table, NF9_SRC_AS, &offset);
+					table->dst_as_offset = offset;
 					FillElement( table, NF9_DST_AS, &offset);
 					map_index = EX_AS_4;
 				}
@@ -819,6 +825,7 @@ size_t				size_required;
 				input_template[NF9_FLOW_SAMPLER_ID].length);
 			dbg_printf("Unexpected SAMPLER ID field length: %d", 
 				input_template[NF9_FLOW_SAMPLER_ID].length);
+
 		}
 	} else {
 		dbg_printf("No Sampling ID found\n");
@@ -992,7 +999,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 
 	sampler_id_length			 = 0;
 	offset_sampler_id 			 = 0;
-	offset_sampler_mode			 = 0;
+	offset_sampler_mode 		 = 0;
 	offset_sampler_interval 	 = 0;
 	offset_std_sampler_interval  = 0;
 	offset_std_sampler_algorithm = 0;
@@ -1100,7 +1107,7 @@ char				*string;
 
 	} else if ( fs->std_sampling.interval > 0 ) {
 		sampling_rate = fs->std_sampling.interval;
-		dbg_printf("[%u] Std sampling available for this flow source: Rate: %llu\n", exporter->exporter_id, sampling_rate);
+		dbg_printf("[%u] Std sampling available for this flow source: Rate: %llu\n", exporter->exporter_id, (long long unsigned)sampling_rate);
 	} else {
 		sampling_rate = default_sampling;
 		dbg_printf("[%u] No Sampling record found\n", exporter->exporter_id);
@@ -1108,7 +1115,7 @@ char				*string;
 
 	if ( overwrite_sampling > 0 )  {
 		sampling_rate = overwrite_sampling;
-		dbg_printf("[%u] Hard overwrite sampling rate: %llu\n", exporter->exporter_id, sampling_rate);
+		dbg_printf("[%u] Hard overwrite sampling rate: %llu\n", exporter->exporter_id, (long long unsigned)sampling_rate);
 	} 
 
 	if ( sampling_rate != 1 )
@@ -1137,7 +1144,7 @@ char				*string;
 		processed_records++;
 
 		// map file record to output buffer
-		data_record	= (common_record_t *)fs->nffile->writeto;
+		data_record	= (common_record_t *)fs->nffile->buff_ptr;
 		// map output buffer as a byte array
 		out 	  = (uint8_t *)data_record;
 
@@ -1358,29 +1365,52 @@ char				*string;
 
 		switch (data_record->prot ) { // switch protocol of
 			case IPPROTO_ICMP:
-				fs->stat_record.numflows_icmp++;
-				fs->stat_record.numpackets_icmp += packets;
-				fs->stat_record.numbytes_icmp   += bytes;
+				fs->nffile->stat_record->numflows_icmp++;
+				fs->nffile->stat_record->numpackets_icmp  += packets;
+				fs->nffile->stat_record->numbytes_icmp    += bytes;
 				break;
 			case IPPROTO_TCP:
-				fs->stat_record.numflows_tcp++;
-				fs->stat_record.numpackets_tcp += packets;
-				fs->stat_record.numbytes_tcp   += bytes;
+				fs->nffile->stat_record->numflows_tcp++;
+				fs->nffile->stat_record->numpackets_tcp   += packets;
+				fs->nffile->stat_record->numbytes_tcp     += bytes;
 				break;
 			case IPPROTO_UDP:
-				fs->stat_record.numflows_udp++;
-				fs->stat_record.numpackets_udp += packets;
-				fs->stat_record.numbytes_udp   += bytes;
+				fs->nffile->stat_record->numflows_udp++;
+				fs->nffile->stat_record->numpackets_udp   += packets;
+				fs->nffile->stat_record->numbytes_udp     += bytes;
 				break;
 			default:
-				fs->stat_record.numflows_other++;
-				fs->stat_record.numpackets_other += packets;
-				fs->stat_record.numbytes_other   += bytes;
+				fs->nffile->stat_record->numflows_other++;
+				fs->nffile->stat_record->numpackets_other += packets;
+				fs->nffile->stat_record->numbytes_other   += bytes;
 		}
-		fs->stat_record.numflows++;
-		fs->stat_record.numpackets	+= packets;
-		fs->stat_record.numbytes	+= bytes;
+		fs->nffile->stat_record->numflows++;
+		fs->nffile->stat_record->numpackets	+= packets;
+		fs->nffile->stat_record->numbytes	+= bytes;
 	
+		if ( fs->xstat ) {
+			uint32_t bpp = packets ? bytes/packets : 0;
+			if ( bpp > MAX_BPP ) 
+				bpp = MAX_BPP;
+			if ( data_record->prot == IPPROTO_TCP ) {
+				fs->xstat->bpp_histogram->tcp.bpp[bpp]++;
+				fs->xstat->bpp_histogram->tcp.count++;
+
+				fs->xstat->port_histogram->src_tcp.port[data_record->srcport]++;
+				fs->xstat->port_histogram->dst_tcp.port[data_record->dstport]++;
+				fs->xstat->port_histogram->src_tcp.count++;
+				fs->xstat->port_histogram->dst_tcp.count++;
+			} else if ( data_record->prot == IPPROTO_UDP ) {
+				fs->xstat->bpp_histogram->udp.bpp[bpp]++;
+				fs->xstat->bpp_histogram->udp.count++;
+
+				fs->xstat->port_histogram->src_udp.port[data_record->srcport]++;
+				fs->xstat->port_histogram->dst_udp.port[data_record->dstport]++;
+				fs->xstat->port_histogram->src_udp.count++;
+				fs->xstat->port_histogram->dst_udp.count++;
+			}
+		}
+
 		if ( verbose ) {
 			master_record_t master_record;
 			ExpandRecord_v2((common_record_t *)data_record, &(table->extension_info), &master_record);
@@ -1390,7 +1420,7 @@ char				*string;
 
 		fs->nffile->block_header->size  += data_record->size;
 		fs->nffile->block_header->NumRecords++;
-		fs->nffile->writeto	= (common_record_t *)((pointer_addr_t)data_record + data_record->size);
+		fs->nffile->buff_ptr	= (common_record_t *)((pointer_addr_t)data_record + data_record->size);
 
 		// advance input
 		size_left 		   -= table->input_record_size;
@@ -1406,7 +1436,7 @@ char				*string;
 			// reset buffer
 			fs->nffile->block_header->size 		= 0;
 			fs->nffile->block_header->NumRecords = 0;
-			fs->nffile->writeto = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
+			fs->nffile->buff_ptr = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
 			return;
 		}
 
@@ -1441,9 +1471,9 @@ uint8_t		*in;
 	if ( TestFlag(offset_table->flags, HAS_SAMPLER_DATA) ) {
 		sampler.table_id = id;
 		if (offset_table->sampler_id_length == 2) {
-			sampler_id 	 	 = Get_val16((void *)&in[offset_table->offset_id]);
+			sampler_id = Get_val16((void *)&in[offset_table->offset_id]);
 		} else {
-			sampler_id 	 	 = in[offset_table->offset_id];
+			sampler_id = in[offset_table->offset_id];
 		}
 		sampler.mode 	 = in[offset_table->offset_mode];
 		sampler.interval = Get_val32((void *)&in[offset_table->offset_interval]); 
@@ -1471,7 +1501,7 @@ uint8_t		*in;
 				fs->std_sampling.mode, fs->std_sampling.interval);
 	}
 	processed_records++;
-			
+
 } // End of Process_v9_option_data
 
 void Process_v9(void *in_buff, ssize_t in_buff_cnt, FlowSource_t *fs) {
@@ -1487,7 +1517,6 @@ static int pkg_num = 0;
 	pkg_num++;
 	size_left = in_buff_cnt;
 	if ( size_left < NETFLOW_V9_HEADER_LENGTH ) {
-		syslog(LOG_ERR, "Process_v9: Too little data for v9 packets: '%lli'", (long long)size_left);
 		syslog(LOG_ERR, "Process_v9: Too little data for v9 packets: '%lli'", (long long)size_left);
 		return;
 	}
@@ -1527,7 +1556,7 @@ static int pkg_num = 0;
 			distance = 0xffffffff + distance  +1;
 		}
 		if (distance != 1) {
-			fs->stat_record.sequence_failure++;
+			fs->nffile->stat_record->sequence_failure++;
 			dbg_printf("[%u] Sequence error: last seq: %lli, seq %lli dist %lli\n", 
 				exporter->exporter_id, (long long)exporter->last_sequence, (long long)exporter->sequence, (long long)distance);
 			/*
@@ -1569,7 +1598,7 @@ static int pkg_num = 0;
 		}
 
 #ifdef DEVEL
-		if ( (ptrdiff_t)fs->nffile->writeto & 0x3 ) {
+		if ( (ptrdiff_t)fs->nffile->buff_ptr & 0x3 ) {
 			fprintf(stderr, "PANIC: alignment error!! \n");
 			exit(255);
 		}
@@ -1637,7 +1666,7 @@ int i;
 	v9_output_header->count 		= 0;
 	v9_output_header->source_id 	= htonl(1);
 	template_id						= NF9_MIN_RECORD_FLOWSET_ID;
-	peer->writeto = (void *)((pointer_addr_t)v9_output_header + (pointer_addr_t)sizeof(netflow_v9_header_t));	
+	peer->buff_ptr = (void *)((pointer_addr_t)v9_output_header + (pointer_addr_t)sizeof(netflow_v9_header_t));	
 
 	// set the max number of v9 tags, we support.
 	Max_num_v9_tags = 0;
@@ -2059,12 +2088,12 @@ uint16_t	icmp;
 		icmp = 0;
 	}
 	// write the first 16 bytes of the master_record starting with first up to and including dst port
-	memcpy(peer->writeto, (void *)&master_record->first, 16);
-	peer->writeto = (void *)((pointer_addr_t)peer->writeto + 16);
+	memcpy(peer->buff_ptr, (void *)&master_record->first, 16);
+	peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 16);
 
 	// write ICMP type/code
-	memcpy(peer->writeto, (void *)&icmp,2);
-	peer->writeto = (void *)((pointer_addr_t)peer->writeto + 2);
+	memcpy(peer->buff_ptr, (void *)&icmp,2);
+	peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 2);
 
 	// IP address info
 	if ((master_record->flags & FLAG_IPV6_ADDR) != 0 ) { // IPv6
@@ -2072,31 +2101,31 @@ uint16_t	icmp;
 		master_record->v6.srcaddr[1] = htonll(master_record->v6.srcaddr[1]);
 		master_record->v6.dstaddr[0] = htonll(master_record->v6.dstaddr[0]);
 		master_record->v6.dstaddr[1] = htonll(master_record->v6.dstaddr[1]);
-		memcpy(peer->writeto, master_record->v6.srcaddr, 4 * sizeof(uint64_t));
-		peer->writeto = (void *)((pointer_addr_t)peer->writeto + 4 * sizeof(uint64_t));
+		memcpy(peer->buff_ptr, master_record->v6.srcaddr, 4 * sizeof(uint64_t));
+		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 4 * sizeof(uint64_t));
 	} else {
-		Put_val32(htonl(master_record->v4.srcaddr), peer->writeto);
-		peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
-		Put_val32(htonl(master_record->v4.dstaddr), peer->writeto);
-		peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+		Put_val32(htonl(master_record->v4.srcaddr), peer->buff_ptr);
+		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
+		Put_val32(htonl(master_record->v4.dstaddr), peer->buff_ptr);
+		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 	}
 
 	// packet counter
 	if ((master_record->flags & FLAG_PKG_64) != 0 ) { // 64bit counters
-		Put_val64(htonll(master_record->dPkts), peer->writeto);
-		peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
+		Put_val64(htonll(master_record->dPkts), peer->buff_ptr);
+		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 	} else {
-		Put_val32(htonl((uint32_t)master_record->dPkts), peer->writeto);
-		peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+		Put_val32(htonl((uint32_t)master_record->dPkts), peer->buff_ptr);
+		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 	}
 
 	// bytes counter
 	if ((master_record->flags & FLAG_BYTES_64) != 0 ) { // 64bit counters
-		Put_val64(htonll(master_record->dOctets),peer->writeto);
-		peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
+		Put_val64(htonll(master_record->dOctets),peer->buff_ptr);
+		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 	} else {
-		Put_val32(htonl((uint32_t)master_record->dOctets),peer->writeto);
-		peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+		Put_val32(htonl((uint32_t)master_record->dOctets),peer->buff_ptr);
+		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 	}
 
 	// send now optional extensions according the extension map
@@ -2113,129 +2142,129 @@ uint16_t	icmp;
 				uint16_t in, out;
 
 				in  = htons(master_record->input);
-				Put_val16(in, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint16_t));
+				Put_val16(in, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint16_t));
 
 				out = htons(master_record->output);
-				Put_val16(out, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint16_t));
+				Put_val16(out, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint16_t));
 				} break;
 			case EX_IO_SNMP_4:
-				Put_val32(htonl(master_record->input), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
-				Put_val32(htonl(master_record->output), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+				Put_val32(htonl(master_record->input), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
+				Put_val32(htonl(master_record->output), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_AS_2: { // srcas/dstas 2 byte
 				uint16_t src, dst;
 
 				src = htons(master_record->srcas);
-				Put_val16(src, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint16_t));
+				Put_val16(src, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint16_t));
 
 				dst = htons(master_record->dstas);
-				Put_val16(dst, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint16_t));
+				Put_val16(dst, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint16_t));
 				} break;
 			case EX_AS_4:  // srcas/dstas 4 byte
-				Put_val32(htonl(master_record->srcas), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
-				Put_val32(htonl(master_record->dstas), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+				Put_val32(htonl(master_record->srcas), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
+				Put_val32(htonl(master_record->dstas), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_MULIPLE: {
-				tpl_ext_8_t *tpl = (tpl_ext_8_t *)peer->writeto;
+				tpl_ext_8_t *tpl = (tpl_ext_8_t *)peer->buff_ptr;
 				tpl->dst_tos  = master_record->dst_tos;
 				tpl->dir 	  = master_record->dir;
 				tpl->src_mask = master_record->src_mask;
 				tpl->dst_mask = master_record->dst_mask;
-				peer->writeto = (void *)tpl->data;
+				peer->buff_ptr = (void *)tpl->data;
 				} break;
 			case EX_NEXT_HOP_v4:
-				Put_val32(htonl(master_record->ip_nexthop.v4), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+				Put_val32(htonl(master_record->ip_nexthop.v4), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_NEXT_HOP_v6: 
-				Put_val64(htonll(master_record->ip_nexthop.v6[0]), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
-				Put_val64(htonll(master_record->ip_nexthop.v6[1]), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
+				Put_val64(htonll(master_record->ip_nexthop.v6[0]), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
+				Put_val64(htonll(master_record->ip_nexthop.v6[1]), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 				break;
 			case EX_NEXT_HOP_BGP_v4: 
-				Put_val32(htonl(master_record->bgp_nexthop.v4), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+				Put_val32(htonl(master_record->bgp_nexthop.v4), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_NEXT_HOP_BGP_v6: 
-				Put_val64(htonll(master_record->bgp_nexthop.v6[0]), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
-				Put_val64(htonll(master_record->bgp_nexthop.v6[1]), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
+				Put_val64(htonll(master_record->bgp_nexthop.v6[0]), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
+				Put_val64(htonll(master_record->bgp_nexthop.v6[1]), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 				break;
 			case EX_VLAN: 
-				Put_val16(htons(master_record->src_vlan), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint16_t));
-				Put_val16(htons(master_record->dst_vlan), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint16_t));
+				Put_val16(htons(master_record->src_vlan), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint16_t));
+				Put_val16(htons(master_record->dst_vlan), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint16_t));
 				break;
 			case EX_OUT_PKG_4: 
-				Put_val32(htonl(master_record->out_pkts), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+				Put_val32(htonl(master_record->out_pkts), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_OUT_PKG_8:
-				Put_val64(htonll(master_record->out_pkts), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
+				Put_val64(htonll(master_record->out_pkts), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 				break;
 			case EX_OUT_BYTES_4:
-				Put_val32(htonl(master_record->out_bytes), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+				Put_val32(htonl(master_record->out_bytes), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_OUT_BYTES_8:
-				Put_val64(htonll(master_record->out_bytes), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
+				Put_val64(htonll(master_record->out_bytes), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 				break;
 			case EX_AGGR_FLOWS_4:
-				Put_val32(htonl(master_record->aggr_flows), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint32_t));
+				Put_val32(htonl(master_record->aggr_flows), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_AGGR_FLOWS_8:
-				Put_val64(htonll(master_record->aggr_flows), peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + sizeof(uint64_t));
+				Put_val64(htonll(master_record->aggr_flows), peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 				break;
 			case EX_MAC_1: {
 				uint64_t	val64;
 				val64 = htonll(master_record->in_src_mac);
-				Put_val48(val64, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + 6);	// 48 bits
+				Put_val48(val64, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 6);	// 48 bits
 
 				val64 = htonll(master_record->out_dst_mac);
-				Put_val48(val64, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + 6);	// 48 bits
+				Put_val48(val64, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 6);	// 48 bits
 
 				} break;
 			case EX_MAC_2: {
 				uint64_t	val64;
 				val64 = htonll(master_record->in_dst_mac);
-				Put_val48(val64, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + 6);	// 48 bits
+				Put_val48(val64, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 6);	// 48 bits
 
 				val64 = htonll(master_record->out_src_mac);
-				Put_val48(val64, peer->writeto);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + 6);	// 48 bits
+				Put_val48(val64, peer->buff_ptr);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 6);	// 48 bits
 
 				} break;
 			case EX_MPLS: {
 				uint32_t val32, i;
 				for ( i=0; i<10; i++ ) {
 					val32 = htonl(master_record->mpls_label[i]);
-					Put_val24(val32, peer->writeto);
-					peer->writeto = (void *)((pointer_addr_t)peer->writeto + 3);	// 24 bits
+					Put_val24(val32, peer->buff_ptr);
+					peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 3);	// 24 bits
 				}
 				} break;
 			case EX_ROUTER_ID: {
-				uint8_t *u = (uint8_t *)peer->writeto;
+				uint8_t *u = (uint8_t *)peer->buff_ptr;
 				*u++ = master_record->engine_type;
 				*u++ = master_record->engine_id;
-				peer->writeto = (void *)u;
+				peer->buff_ptr = (void *)u;
 				} break;
 
 			// default: ignore all other extension, as we do not understand them
@@ -2265,7 +2294,7 @@ time_t		now = time(NULL);
 		boot_time	   = (uint64_t)(master_record->first - 86400)*1000;
 		v9_output_header->unix_secs = htonl(master_record->first - 86400);
 		v9_output_header->sequence  = 0;
-		peer->writeto  = (void *)((pointer_addr_t)peer->send_buffer + NETFLOW_V9_HEADER_LENGTH);
+		peer->buff_ptr  = (void *)((pointer_addr_t)peer->send_buffer + NETFLOW_V9_HEADER_LENGTH);
 		record_count   = 0;
 		template_count = 0;
 		flowset_count  = 0;
@@ -2286,17 +2315,17 @@ time_t		now = time(NULL);
 			// same id as last record
 			// if ( now - template->time_sent > MAX_LIFETIME )
 			if ( (record_count & 0xFFF) == 0 ) {	// every 4096 flow records
-				uint16_t length = (pointer_addr_t)peer->writeto - (pointer_addr_t)data_flowset;
+				uint16_t length = (pointer_addr_t)peer->buff_ptr - (pointer_addr_t)data_flowset;
 				uint8_t	align   = length & 0x3;
 				if ( align != 0 ) {
 					length += ( 4 - align );
 					data_flowset->length = htons(length);
-					peer->writeto += align;
+					peer->buff_ptr += align;
 				}
 				// template refresh is needed
 				// terminate the current data flowset
 				data_flowset = NULL;
-				if ( (pointer_addr_t)peer->writeto + template->flowset_length > (pointer_addr_t)peer->endp ) {
+				if ( (pointer_addr_t)peer->buff_ptr + template->flowset_length > (pointer_addr_t)peer->endp ) {
 					// not enough space for template flowset => flush buffer first
 					record_count   = 0;
 					flowset_count  = 0;
@@ -2304,28 +2333,28 @@ time_t		now = time(NULL);
 					peer->flush = 1;
 					return 1;	// return to flush buffer
 				}
-				memcpy(peer->writeto, (void *)template->template_flowset, template->flowset_length);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + template->flowset_length);
+				memcpy(peer->buff_ptr, (void *)template->template_flowset, template->flowset_length);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + template->flowset_length);
 				template->time_sent = now;
 				flowset_count++;
 				template_count++;
 
 				// open a new data flow set at this point in the output buffer
-				data_flowset = (data_flowset_t *)peer->writeto;
+				data_flowset = (data_flowset_t *)peer->buff_ptr;
 				data_flowset->flowset_id = template->template_flowset->fields[0].template_id;
-				peer->writeto = (void *)data_flowset->data;
+				peer->buff_ptr = (void *)data_flowset->data;
 				flowset_count++;
 			} // else Add record
 
 		} else {
 			// record with different template id
 			// terminate the current data flowset
-			uint16_t length = (pointer_addr_t)peer->writeto - (pointer_addr_t)data_flowset;
+			uint16_t length = (pointer_addr_t)peer->buff_ptr - (pointer_addr_t)data_flowset;
 			uint8_t	align   = length & 0x3;
 			if ( align != 0 ) {
 				length += ( 4 - align );
 				data_flowset->length = htons(length);
-				peer->writeto += align;
+				peer->buff_ptr += align;
 			}
 			data_flowset = NULL;
 
@@ -2334,7 +2363,7 @@ time_t		now = time(NULL);
 			template 	= GetOutputTemplate(last_flags, master_record->map_ref);
 			if ( now - template->time_sent > MAX_LIFETIME ) {
 				// refresh template is needed
-				endwrite= (void *)((pointer_addr_t)peer->writeto + template->flowset_length + sizeof(data_flowset_t));
+				endwrite= (void *)((pointer_addr_t)peer->buff_ptr + template->flowset_length + sizeof(data_flowset_t));
 				if ( endwrite > peer->endp ) {
 					// not enough space for template flowset => flush buffer first
 					record_count   = 0;
@@ -2343,60 +2372,60 @@ time_t		now = time(NULL);
 					peer->flush = 1;
 					return 1;	// return to flush the buffer
 				}
-				memcpy(peer->writeto, (void *)template->template_flowset, template->flowset_length);
-				peer->writeto = (void *)((pointer_addr_t)peer->writeto + template->flowset_length);
+				memcpy(peer->buff_ptr, (void *)template->template_flowset, template->flowset_length);
+				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + template->flowset_length);
 				template->time_sent = now;
 				flowset_count++;
 				template_count++;
 			}
 			// open a new data flow set at this point in the output buffer
-			data_flowset = (data_flowset_t *)peer->writeto;
+			data_flowset = (data_flowset_t *)peer->buff_ptr;
 			data_flowset->flowset_id = template->template_flowset->fields[0].template_id;
-			peer->writeto = (void *)data_flowset->data;
+			peer->buff_ptr = (void *)data_flowset->data;
 			flowset_count++;
 		}
 	} else {
 		// output buffer does not contain a data flowset
-		peer->writeto = (void *)((pointer_addr_t)v9_output_header + (pointer_addr_t)sizeof(netflow_v9_header_t));	
+		peer->buff_ptr = (void *)((pointer_addr_t)v9_output_header + (pointer_addr_t)sizeof(netflow_v9_header_t));	
 		last_flags = master_record->flags;
 		last_map	= master_record->map_ref;
 		template = GetOutputTemplate(last_flags, master_record->map_ref);
 		if ( now - template->time_sent > MAX_LIFETIME ) {
 			// refresh template
-			endwrite= (void *)((pointer_addr_t)peer->writeto + template->flowset_length + sizeof(data_flowset_t));
+			endwrite= (void *)((pointer_addr_t)peer->buff_ptr + template->flowset_length + sizeof(data_flowset_t));
 			if ( endwrite > peer->endp ) {
 				// this must never happen!
 				fprintf(stderr, "Panic: Software error in %s line %d\n", __FILE__, __LINE__);
-				fprintf(stderr, "buffer %p, writeto %p template length %x, endbuff %p\n", 
-					peer->send_buffer, peer->writeto, template->flowset_length + (uint32_t)sizeof(data_flowset_t), peer->endp );
+				fprintf(stderr, "buffer %p, buff_ptr %p template length %x, endbuff %p\n", 
+					peer->send_buffer, peer->buff_ptr, template->flowset_length + (uint32_t)sizeof(data_flowset_t), peer->endp );
 				exit(255);
 			}
-			memcpy(peer->writeto, (void *)template->template_flowset, template->flowset_length);
-			peer->writeto = (void *)((pointer_addr_t)peer->writeto + template->flowset_length);
+			memcpy(peer->buff_ptr, (void *)template->template_flowset, template->flowset_length);
+			peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + template->flowset_length);
 			template->time_sent = now;
 			flowset_count++;
 			template_count++;
 		}
 		// open a new data flow set at this point in the output buffer
-		data_flowset = (data_flowset_t *)peer->writeto;
+		data_flowset = (data_flowset_t *)peer->buff_ptr;
 		data_flowset->flowset_id = template->template_flowset->fields[0].template_id;
-		peer->writeto = (void *)data_flowset->data;
+		peer->buff_ptr = (void *)data_flowset->data;
 		flowset_count++;
 	}
 	// now add the record
 
 	required_size = template->record_length;
 
-	endwrite = (void *)((pointer_addr_t)peer->writeto + required_size);
+	endwrite = (void *)((pointer_addr_t)peer->buff_ptr + required_size);
 	if ( endwrite > peer->endp ) {
-		uint16_t length = (pointer_addr_t)peer->writeto - (pointer_addr_t)data_flowset;
+		uint16_t length = (pointer_addr_t)peer->buff_ptr - (pointer_addr_t)data_flowset;
 		if ( (length & 0x3) != 0 ) 
 			length += ( 4 - (length & 0x3));
 
 		// flush the buffer
 		data_flowset->length = htons(length);
 		if ( length == 4 ) {	// empty flowset
-			peer->writeto = (void *)data_flowset;
+			peer->buff_ptr = (void *)data_flowset;
 		} 
 		data_flowset = NULL;
 		v9_output_header->count = htons(record_count+template_count);
@@ -2410,7 +2439,7 @@ time_t		now = time(NULL);
 	// this was a long way up to here, now we can add the data
 	Append_Record(peer, master_record);
 
-	data_flowset->length = htons((pointer_addr_t)peer->writeto - (pointer_addr_t)data_flowset);
+	data_flowset->length = htons((pointer_addr_t)peer->buff_ptr - (pointer_addr_t)data_flowset);
 	record_count++;
 	v9_output_header->count = htons(record_count+template_count);
 

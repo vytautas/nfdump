@@ -61,6 +61,7 @@
 #include "nf_common.h"
 #include "util.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "netflow_v5_v7.h"
 
@@ -74,7 +75,7 @@ static extension_info_t extension_info;
 
 #include "nffile_inline.c"
 
-void *GenRecord(int af, void *writeto, char *src_ip, char *dst_ip, int src_port, int dst_port, 
+void *GenRecord(int af, void *buff_ptr, char *src_ip, char *dst_ip, int src_port, int dst_port, 
 	int proto, int tcp_flags, int tos, uint64_t packets, uint64_t bytes, int src_as, int dst_as);
 
 static void SetIPaddress(master_record_t *record, int af,  char *src_ip, char *dst_ip);
@@ -175,7 +176,6 @@ int main( int argc, char **argv ) {
 int i, c;
 master_record_t		record;
 nffile_t			*nffile;
-char				*string;
 
 	when = ISO2UNIX(strdup("200407111030"));
 	while ((c = getopt(argc, argv, "h")) != EOF) {
@@ -227,9 +227,8 @@ char				*string;
 	}
 	memset((void *)&record, 0, sizeof(record));
 
-	nffile = OpenNewFile("-", NULL, 0, 0, &string);
+	nffile = OpenNewFile("-", NULL, 0, 0, NULL);
 	if ( !nffile ) {
-		fprintf(stderr, "%s\n", string);
 		exit(255);
 	}
 
@@ -481,8 +480,8 @@ char				*string;
 		i++;
 	}
 
-	memcpy(nffile->writeto, (void *)extension_info.map, extension_info.map->size);
-	nffile->writeto += extension_info.map->size;
+	memcpy(nffile->buff_ptr, (void *)extension_info.map, extension_info.map->size);
+	nffile->buff_ptr += extension_info.map->size;
 	nffile->block_header->NumRecords++;
 	nffile->block_header->size 		+= extension_info.map->size;
 
@@ -501,8 +500,8 @@ char				*string;
 		i++;
 	}
 
-	memcpy(nffile->writeto, (void *)extension_info.map, extension_info.map->size);
-	nffile->writeto += extension_info.map->size;
+	memcpy(nffile->buff_ptr, (void *)extension_info.map, extension_info.map->size);
+	nffile->buff_ptr += extension_info.map->size;
 	nffile->block_header->NumRecords++;
 	nffile->block_header->size 		+= extension_info.map->size;
 
@@ -520,8 +519,8 @@ char				*string;
 		i++;
 	}
 
-	memcpy(nffile->writeto, (void *)extension_info.map, extension_info.map->size);
-	nffile->writeto += extension_info.map->size;
+	memcpy(nffile->buff_ptr, (void *)extension_info.map, extension_info.map->size);
+	nffile->buff_ptr += extension_info.map->size;
 	nffile->block_header->NumRecords++;
 	nffile->block_header->size 		+= extension_info.map->size;
 

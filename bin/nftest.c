@@ -147,75 +147,58 @@ void check_offset(char *text, pointer_addr_t offset, pointer_addr_t expect) {
 }
 
 void CheckCompression(char *filename) {
-nffile_t	*nffile;
-int i, rfd, compress, bsize;
+nffile_t	*nffile_w, *nffile_r;
+int i, compress, bsize;
 ssize_t	ret;
-stat_record_t *stat_ptr;
-char	*string;
 char outfile[MAXPATHLEN];
-void	*buff_ptr, *in_buff;
-data_block_header_t *in_block_header, *p;					
-
 struct timeval  	tstart[2];
 struct timeval  	tend[2];
 u_long usec, sec;
 double wall[2];
 
-	rfd = OpenFile(filename, &stat_ptr, &string);
-	if ( rfd < 0 ) {
-		fprintf(stderr, "%s\n", string);
+	nffile_r = OpenFile(filename, NULL);
+	if ( !nffile_r ) {
 		return;
 	}
 	
+	ret = ReadBlock(nffile_r);
+	if ( ret < 0 ) {
+		CloseFile(nffile_r);
+		DisposeFile(nffile_r);
+		return;
+	}
+	CloseFile(nffile_r);
+
 	// tmp filename for new output file
 	snprintf(outfile, MAXPATHLEN, "%s-tmp", filename);
 	outfile[MAXPATHLEN-1] = '\0';
+	nffile_w = NULL;
 
-	in_buff = malloc(BUFFSIZE + sizeof(data_block_header_t));
-	if ( !in_buff ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		return;
-	}
-	in_block_header = (data_block_header_t *)in_buff;
-	buff_ptr	 = (void *)((pointer_addr_t)in_buff + sizeof(data_block_header_t));
-
-	ret = ReadBlock(rfd, in_block_header, buff_ptr, &string);
-	if ( ret < 0 ) {
-		fprintf(stderr, "Error while reading data block. Abort.\n");
-		close(rfd);
-		unlink(outfile);
-		return;
-	}
-	close(rfd);
-
-	bsize = in_block_header->size;
+	bsize = nffile_r->block_header->size;
 	for ( compress=0; compress<=1; compress++ ) {
-		nffile = OpenNewFile(outfile, NULL, compress, 0, &string);
-		if ( !nffile ) {
-        	fprintf(stderr, "%s\n", string);
+		nffile_w = OpenNewFile(outfile, nffile_w, compress, 0, NULL);
+		if ( !nffile_w ) {
+			DisposeFile(nffile_r);
         	return;
     	}
 		
-		// tmp replace buffer with data from input file
-		p = nffile->block_header;
-		nffile->block_header = in_block_header;
-
 		gettimeofday(&(tstart[compress]), (struct timezone*)NULL);
 		for ( i=0; i<100; i++ ) {
-			if ( (ret = WriteBlock(nffile)) <= 0 ) {
+			nffile_w->block_header->size = bsize;
+			if ( WriteExtraBlock(nffile_w, nffile_r->block_header) <= 0 ) {
 				fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
-				close(rfd);
-				CloseUpdateFile(nffile, stat_ptr, "none", &string );
+				// Cleanup
+				CloseFile(nffile_w);
+				DisposeFile(nffile_w);
+				DisposeFile(nffile_r);
 				unlink(outfile);
 				return;
 			}
 		}
 		gettimeofday(&(tend[compress]), (struct timezone*)NULL);
 
-		// reset buffer
-		nffile->block_header = p;
-		CloseUpdateFile(nffile, stat_ptr, "none", &string );
-		nffile = DisposeFile(nffile);
+		// Cleanup
+		CloseFile(nffile_w);
 		unlink(outfile);
 
 		if (tend[compress].tv_usec < tstart[compress].tv_usec) 
@@ -226,6 +209,9 @@ double wall[2];
 
 		wall[compress] = (double)sec + ((double)usec)/1000000;
 	}
+
+	DisposeFile(nffile_r);
+	DisposeFile(nffile_w);
 
 	printf("100 write cycles, with size %u bytes\n", bsize);
 	printf("Uncompressed write time: %-.6fs size: %u\n", wall[0], bsize);
@@ -260,11 +246,11 @@ void *p;
 
 	p = (void *)c_record.data;
 	if (( (pointer_addr_t)p - (pointer_addr_t)&c_record ) != COMMON_RECORD_DATA_SIZE ) {
-		printf("*** common record size missmatch: expected %i, found: %i\n",	
-			COMMON_RECORD_DATA_SIZE, (pointer_addr_t)p - (pointer_addr_t)&c_record	);
+		printf("*** common record size missmatch: expected %i, found: %llu\n",	
+			(int)COMMON_RECORD_DATA_SIZE, (unsigned long long)((pointer_addr_t)p - (pointer_addr_t)&c_record));
 		exit(255);
 	} else {
-		printf("Common record size is %i\n", COMMON_RECORD_DATA_SIZE);
+		printf("Common record size is %i\n", (int)COMMON_RECORD_DATA_SIZE);
 	}
 	i = 3;
 	printf("ALIGN BYTES: %lu\n", (long unsigned)ALIGN_BYTES);

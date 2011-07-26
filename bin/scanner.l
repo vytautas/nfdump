@@ -101,6 +101,11 @@ H				(0X|0x)[0-9A-Fa-f]+
 					return NUMBER;
 				}
 
+(0X|0x)[0-9A-Fa-f]+ {
+					yylval.value = (uint64_t) strtoull(yytext,NULL,16);
+					return NUMBER;
+				}
+
 [0-9]+[kmgt]{0,1}	{ 
 					size_t len = strlen(yytext);
 					switch (yytext[len-1]) {

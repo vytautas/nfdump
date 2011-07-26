@@ -474,7 +474,9 @@ char *filename, line[256];
 			close(fd);
 			return ERR_FAIL;
 		}
-		ftruncate(fd, 0);
+		if ( ftruncate(fd, 0) < 0 ) {
+			LogError( "ftruncate() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		}
 	}
 
 	dirstat_tmpl = *dirstat_stack[index].dirstat;
@@ -484,7 +486,9 @@ char *filename, line[256];
 		snprintf(line, 255, "%s=%llu\n", config_def[i].name, (unsigned long long)*(config_def[i].value));
 		line[255] = '\0';
 		len = strlen(line);
-		write(fd, line, len);
+		if ( write(fd, line, len) < 0 ) {
+			LogError( "write() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		}
 		i++;
 	}
 

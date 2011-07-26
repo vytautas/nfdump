@@ -146,6 +146,7 @@
 #include "nf_common.h"
 #include "util.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "sflow.h"
 #include "sflow_proto.h" // sFlow v5
@@ -1013,7 +1014,7 @@ static void decodeIPV6(SFSample *sample)
 
 static inline void StoreSflowRecord(SFSample *sample, FlowSource_t *fs) {
 common_record_t	*common_record;
-stat_record_t *stat_record = &(fs->stat_record);
+stat_record_t *stat_record = fs->nffile->stat_record;
 exporter_sflow_t 	*exporter;
 extension_map_t		*extension_map;
 struct timeval now;
@@ -1079,7 +1080,7 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 		return;
 	}
 
-	common_record = (common_record_t *)fs->nffile->writeto;
+	common_record = (common_record_t *)fs->nffile->buff_ptr;
 
 	common_record->size			= sflow_output_record_size[ip_flags] + ipsize;
 	common_record->type			= CommonRecordType;
@@ -1297,14 +1298,14 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	fs->nffile->block_header->NumRecords++;
 	fs->nffile->block_header->size 		+= (sflow_output_record_size[ip_flags] + ipsize);
 #ifdef DEVEL
-	if ( (next_data - fs->nffile->writeto) != (sflow_output_record_size[ip_flags] + ipsize) ) {
+	if ( (next_data - fs->nffile->buff_ptr) != (sflow_output_record_size[ip_flags] + ipsize) ) {
 		printf("PANIC: Size error. Buffer diff: %llu, Size: %u\n", 
-			(unsigned long long)(next_data - fs->nffile->writeto), 
+			(unsigned long long)(next_data - fs->nffile->buff_ptr), 
 			(sflow_output_record_size[ip_flags] + ipsize));
 		exit(255);
 	}
 #endif
-	fs->nffile->writeto 					= next_data;
+	fs->nffile->buff_ptr 					= next_data;
 
 }
 			
@@ -1351,7 +1352,7 @@ uint32_t val = getData32(sample);
 static inline uint64_t sf_log_next64(SFSample *sample, char *fieldName) {
 uint64_t val64 = getData64(sample);
 
-	dbg_printf("%s %llu\n", fieldName, val64);
+	dbg_printf("%s %llu\n", fieldName, (unsigned long long)val64);
 	return val64;
 } // End of sf_log_next64
 

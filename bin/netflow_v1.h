@@ -27,58 +27,70 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
  *  POSSIBILITY OF SUCH DAMAGE.
  *  
- *  $Author: haag $
+ *  $Author: peter $
  *
- *  $Id: util.h 39 2009-11-25 08:11:15Z haag $
+ *  $Id: netflow_v1.h 26 2011-07-05 18:51:25Z peter $
  *
- *  $LastChangedRevision: 39 $
+ *  $LastChangedRevision: 26 $
  *	
  */
 
-#ifndef _UTIL_H
-#define _UTIL_H 1
+#ifndef _NETFLOW_V1_H
+#define _NETFLOW_V1_H 1
 
-#define EBUFF_SIZE 256
+#define NETFLOW_V1_HEADER_LENGTH 16
+#define NETFLOW_V1_RECORD_LENGTH 48
+#define NETFLOW_V1_MAX_RECORDS   24
 
-#ifdef WORDS_BIGENDIAN
-#	define ntohll(n)	(n)
-#	define htonll(n)	(n)
-#else
-#	define ntohll(n)	(((uint64_t)ntohl(n)) << 32) + ntohl((n) >> 32)
-#	define htonll(n)	(((uint64_t)htonl(n)) << 32) + htonl((n) >> 32)
-#endif
+/* v1 structures */
+typedef struct netflow_v1_header {
+  uint16_t  version;
+  uint16_t  count;
+  uint32_t  SysUptime;
+  uint32_t  unix_secs;
+  uint32_t  unix_nsecs;
+} netflow_v1_header_t;
 
-typedef struct stringlist_s {
-	uint32_t	block_size;
-	uint32_t	max_index;
-	uint32_t	num_strings;
-	char		**list;
-} stringlist_t;
+typedef struct netflow_v1_record {
+  uint32_t  srcaddr;
+  uint32_t  dstaddr;
+  uint32_t  nexthop;
+  uint16_t  input;
+  uint16_t  output;
+  uint32_t  dPkts;
+  uint32_t  dOctets;
+  uint32_t  First;
+  uint32_t  Last;
+  uint16_t  srcport;
+  uint16_t  dstport;
+  uint16_t  pad1;
+  uint8_t   prot;
+  uint8_t   tos;
+  uint8_t   tcp_flags;
+  uint8_t   pad2[7];
+} netflow_v1_record_t;
 
-void xsleep(long sec);
 
-int InitLog(char *name, char *facility);
+/* prototypes */
+int Init_v1(void);
 
-void LogError(char *format, ...);
+void Process_v1(void *in_buff, ssize_t in_buff_cnt, FlowSource_t *fs);
 
-void LogInfo(char *format, ...);
+/*
+ * Extension map for v1
+ *
+ * Required extensions:
+ *
+ *       4 byte byte counter
+ *       | 4byte packet counter
+ *       | | IPv4 
+ *       | | |
+ * xxxx x0 0 0
+ *
+ * Optional extensions:
+ *
+ * 4	: 2 byte input/output interface id
+ * 9	: IPv4 next hop
+ */
 
-void InitStringlist(stringlist_t *list, int block_size);
-
-void InsertString(stringlist_t *list, char *string);
-
-int ScanTimeFrame(char *tstring, time_t *t_start, time_t *t_end);
-
-char *TimeString(time_t start, time_t end);
-
-char *UNIX2ISO(time_t t);
-
-time_t ISO2UNIX(char *timestring);
-
-void SetupInputFileSequence(char *multiple_dirs, char *single_file, char *multiple_files);
-
-char *GetCurrentFilename(void);
-
-void Setv6Mode(int mode);
-
-#endif //_UTIL_H
+#endif //_NETFLOW_V1_H

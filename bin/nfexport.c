@@ -59,6 +59,7 @@
 #include "nffile.h"
 #include "nfx.h"
 #include "nfstat.h"
+#include "nfxstat.h"
 #include "nflowcache.h"
 
 #include "nfexport.h"
@@ -89,7 +90,7 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 	// allocate table for export maps - no more needed than slots used in extension_map_list
 	export_maps   = (extension_map_t **)calloc(extension_map_list.max_used+1, sizeof(extension_map_t *));
 	if ( !export_maps ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		exit(255);
 	}
 
@@ -187,13 +188,13 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 		// new map is different - create the new map
 		export_maps[map_id] = (extension_map_t *)malloc((ssize_t)new_map_size);
 		if ( !export_maps[map_id] ) {
-			fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+			LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 			exit(255);
 		}
 
 		// Panic check - should never happen, but we are going to copy memory
 		if ( new_map_size < SourceMap->size ) {
-			fprintf(stderr, "PANIC! new_map_size(%i) < SourceMap->size(%i) in %s line %d\n", 
+			LogError("PANIC! new_map_size(%i) < SourceMap->size(%i) in %s line %d\n", 
 				new_map_size, SourceMap->size,  __FILE__, __LINE__);
 			exit(255);
 		}
@@ -236,28 +237,16 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 
 } // End of CreateExportExtensionMaps
 
-void ExportFlowTable(char *filename, int compress, int aggregate, int bidir, int date_sorted) {
+int ExportFlowTable(nffile_t *nffile, int aggregate, int bidir, int date_sorted) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 SortElement_t 		*SortList;
-stat_record_t 		stat_record;
-nffile_t			*nffile;
 master_record_t		*aggr_record_mask;
 uint32_t 			i;
 uint32_t			maxindex, c;
+#ifdef DEVEL
 char				*string;
-
-	// Init 
-	memset((void *)&stat_record, 0, sizeof(stat_record_t));
-	stat_record.first_seen = 0x7fffffff;
-	stat_record.msec_first = 999;
-
-	// Init nfile handle - open file 
-	nffile = OpenNewFile(filename, NULL, compress, IsAnonymized(), &string);
-	if ( !nffile ) {
-		fprintf(stderr, "%s\n", string);
-		return;
-	}
+#endif
 
 	CreateExportExtensionMaps(aggregate, bidir, nffile);
 
@@ -271,12 +260,12 @@ char				*string;
 		SortList = (SortElement_t *)calloc(maxindex, sizeof(SortElement_t));
 
 		if ( !SortList ) {
-			fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
-			return;
+			LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+			return 0;
 		}
 
 		// preset SortList table - still unsorted
-		for ( i=0; i<FlowTable->IndexMask; i++ ) {
+		for ( i=0; i<=FlowTable->IndexMask; i++ ) {
 			r = FlowTable->bucket[i];
 			if ( !r ) 
 				continue;
@@ -291,8 +280,8 @@ char				*string;
 		}
 
 		if ( c != maxindex ) {
-			fprintf(stderr, "Missmatch %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
-			abort();
+			LogError("Abort: Missmatch %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+			return 0;
 		}
 
 		if ( c >= 2 )
@@ -339,12 +328,12 @@ char				*string;
 			printf("%s\n", string);
 #endif
 			// Update statistics
-			UpdateStat(&stat_record, flow_record);
+			UpdateStat(nffile->stat_record, flow_record);
 		}
 
 	} else {
 		// print them as they came
-		for ( i=0; i<FlowTable->IndexMask; i++ ) {
+		for ( i=0; i<=FlowTable->IndexMask; i++ ) {
 			r = FlowTable->bucket[i];
 			while ( r ) {
 				master_record_t	*flow_record;
@@ -360,7 +349,7 @@ char				*string;
 				flow_record->dOctets 	= r->counter[INBYTES];
 				flow_record->out_pkts 	= r->counter[OUTPACKETS];
 				flow_record->out_bytes 	= r->counter[OUTBYTES];
-				flow_record->aggr_flows 	= r->counter[FLOWS];
+				flow_record->aggr_flows	= r->counter[FLOWS];
 
 				// apply IP mask from aggregation, to provide a pretty output
 				if ( FlowTable->has_masks ) {
@@ -386,7 +375,7 @@ char				*string;
 				printf("%s\n", string);
 #endif
 				// Update statistics
-				UpdateStat(&stat_record, flow_record);
+				UpdateStat(nffile->stat_record, flow_record);
 
 				r = r->next;
 			}
@@ -396,14 +385,12 @@ char				*string;
 
     if ( nffile->block_header->NumRecords ) {
         if ( WriteBlock(nffile) <= 0 ) {
-            fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
+            LogError("Failed to write output buffer to disk: '%s'" , strerror(errno));
+			return 0;
         } 
     }
 
-	CloseUpdateFile(nffile, &stat_record, GetIdent(), &string );
-	if ( string != NULL )
-		fprintf(stderr, "%s\n", string);
-	nffile = DisposeFile(nffile);
+	return 1;
 
 } // End of PrintFlowTable
 

@@ -41,6 +41,8 @@
 // as it's called for every single flow
 static inline void UpdateStat(stat_record_t	*stat_record, master_record_t *master_record);
 
+static inline void UpdateXStat(xstat_t	*xstat, master_record_t *master_record);
+
 static inline void UpdateStat(stat_record_t	*stat_record, master_record_t *master_record) {
 
 	switch (master_record->prot) {
@@ -87,4 +89,28 @@ static inline void UpdateStat(stat_record_t	*stat_record, master_record_t *maste
 
 } // End of UpdateStat
 
+static inline void UpdateXStat(xstat_t	*xstat, master_record_t *master_record) {
+uint32_t bpp = master_record->dPkts ? master_record->dOctets/master_record->dPkts : 0;
+
+	if ( bpp > MAX_BPP ) 
+		bpp = MAX_BPP;
+	if ( master_record->prot == IPPROTO_TCP ) {
+		xstat->bpp_histogram->tcp.bpp[bpp]++;
+		xstat->bpp_histogram->tcp.count++;
+
+		xstat->port_histogram->src_tcp.port[master_record->srcport]++;
+		xstat->port_histogram->dst_tcp.port[master_record->dstport]++;
+		xstat->port_histogram->src_tcp.count++;
+		xstat->port_histogram->dst_tcp.count++;
+	} else if ( master_record->prot == IPPROTO_UDP ) {
+		xstat->bpp_histogram->udp.bpp[bpp]++;
+		xstat->bpp_histogram->udp.count++;
+
+		xstat->port_histogram->src_udp.port[master_record->srcport]++;
+		xstat->port_histogram->dst_udp.port[master_record->dstport]++;
+		xstat->port_histogram->src_udp.count++;
+		xstat->port_histogram->dst_udp.count++;
+	}
+
+} // End of UpdateXStat
 

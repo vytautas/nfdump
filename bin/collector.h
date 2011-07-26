@@ -66,7 +66,7 @@ typedef struct option_offset_s {
 	// sampling offsets
 #define HAS_SAMPLER_DATA	1
 	uint16_t	offset_id;
-	uint16_t	sampler_id_length;
+	uint16_t    sampler_id_length;
 	uint16_t	offset_mode;
 	uint16_t	offset_interval;
 
@@ -81,7 +81,7 @@ typedef struct FlowSource_s {
 	struct FlowSource_s *next;
 
 	// exporter identifiers
-	char 				Ident[IdentLen];
+	char 				Ident[IDENTLEN];
 	ip_addr_t			ip;
 	uint32_t			sa_family;
 
@@ -94,10 +94,12 @@ typedef struct FlowSource_s {
 	nffile_t			*nffile;		// the writing file handle
 
 	// statistical data per source
-	stat_record_t		stat_record;
 	uint32_t			bad_packets;
 	uint64_t			first_seen;
 	uint64_t			last_seen;
+
+	// port histogram data
+	xstat_t				*xstat;
 
 	// Any exporter specific data
 	void				*exporter_data;
@@ -123,6 +125,9 @@ typedef struct FlowSource_s {
 
 } FlowSource_t;
 
+/* input buffer size, to read data from the network */
+#define NETWORK_INPUT_BUFF_SIZE 65535	// Maximum UDP message size
+
 // prototypes
 int AddFlowSource(FlowSource_t **FlowSource, char *ident);
 
@@ -137,7 +142,8 @@ void FlushExtensionMaps(FlowSource_t *fs);
 void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t sampler_id_length, 
 	uint16_t offset_sampler_mode, uint16_t offset_sampler_interval);
 
-void InsertStdSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_std_sampler_interval, uint16_t offset_std_sampler_algorithm);
+void InsertStdSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_std_sampler_interval, 
+	uint16_t offset_std_sampler_algorithm);
 
 void InsertSampler( FlowSource_t *fs, uint8_t sampler_id, sampler_t *sampler);
 

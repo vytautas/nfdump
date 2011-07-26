@@ -38,12 +38,14 @@
 #ifndef _FLIST_H
 #define _FLIST_H 1
 
+#define EMPTY_LIST ((nffile_t *)-1)
+
 int InitHierPath(int num);
 
 char *GetSubDir(struct  tm *now);
 
 int SetupSubDir(char *dir, char *subdir, char *error, size_t errlen );
 
-int GetNextFile(int current, time_t twin_start, time_t twin_end, stat_record_t **stat_record);
+nffile_t *GetNextFile(nffile_t *nffile, time_t twin_start, time_t twin_end);
 
 #endif //_FLIST_H

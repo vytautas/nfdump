@@ -54,7 +54,6 @@
 #include <stdint.h>
 #endif
 
-#include "version.h"
 #include "nf_common.h"
 #include "rbtree.h"
 #include "nftree.h"
@@ -63,22 +62,26 @@
 #include "nfx.h"
 #include "nfstat.h"
 #include "nfstatfile.h"
+#include "nfxstat.h"
 #include "ipconv.h"
 #include "flist.h"
 #include "util.h"
 #include "profile.h"
 
 /* Local Variables */
-static char const *rcsid 		  = "$Id: nfprofile.c 39 2009-11-25 08:11:15Z haag $";
+static const char *nfdump_version = VERSION;
+
 
 extension_map_list_t extension_map_list;
+uint32_t is_anonymized;
+char Ident[IDENTLEN];
 
 /* Function Prototypes */
 static void usage(char *name);
 
 static profile_param_info_t *ParseParams (char *profile_datadir);
 
-static void process_data(profile_channel_info_t *channels, unsigned int num_channels, time_t tslot);
+static void process_data(profile_channel_info_t *channels, unsigned int num_channels, time_t tslot, int do_xstat);
 
 
 /* Functions */
@@ -91,6 +94,7 @@ static void usage(char *name) {
 					"-h\t\tthis text you see right here\n"
 					"-V\t\tPrint version and exit.\n"
 					"-D <dns>\tUse nameserver <dns> for host lookup.\n"
+					"-H Add xstat histogram data to flow file.(default 'no')\n"
 					"-M <expr>\tRead input from multiple directories.\n"
 					"-r\t\tread input from file\n"
 					"-f\t\tfilename with filter syntaxfile\n"
@@ -104,31 +108,28 @@ static void usage(char *name) {
 } /* usage */
 
 
-static void process_data(profile_channel_info_t *channels, unsigned int num_channels, time_t tslot) {
-data_block_header_t in_block_header;					
-common_record_t 	*flow_record, *in_buff;
-master_record_t		master_record;
+static void process_data(profile_channel_info_t *channels, unsigned int num_channels, time_t tslot, int do_xstat) {
+common_record_t	*flow_record;
+master_record_t	master_record;
+nffile_t		*nffile;
 FilterEngine_data_t	*engine;
-int 		i, j, rfd, done, ret ;
-char		*string;
+int 		i, j, done, ret ;
 #ifdef COMPAT15
 int	v1_map_done = 0;
 #endif
 
-	rfd = GetNextFile(0, 0, 0, NULL);
-	if ( rfd < 0 ) {
-		if ( rfd == FILE_ERROR )
-			LogError("Can't open file for reading: %s\n", strerror(errno));
+	nffile = GetNextFile(NULL, 0, 0);
+	if ( !nffile ) {
+		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
 
-	// allocate buffer suitable for netflow version
-	in_buff = (common_record_t *) malloc(BUFFSIZE);
-	if ( !in_buff ) {
-		LogError("Memory allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		close(rfd);
-		return;
-	}
+	// store infos away for later use
+	// although multiple files may be processed, it is assumed that all 
+	// have the same settings
+	is_anonymized = IP_ANONYMIZED(nffile);
+	strncpy(Ident, nffile->file_header->ident, IDENTLEN);
+	Ident[IDENTLEN-1] = '\0';
 
 	for ( j=0; j < num_channels; j++ ) {
 		(channels[j].engine)->nfrecord 		= (uint64_t *)&master_record;
@@ -138,33 +139,33 @@ int	v1_map_done = 0;
 	while ( !done ) {
 
 		// get next data block from file
-		ret = ReadBlock(rfd, &in_block_header, (void *)in_buff, &string);
+		ret = ReadBlock(nffile);
 
 		switch (ret) {
 			case NF_CORRUPT:
 			case NF_ERROR:
 				if ( ret == NF_CORRUPT ) 
-					LogError("Skip corrupt data file '%s': '%s'\n",GetCurrentFilename(), string);
+					LogError("Skip corrupt data file '%s'\n",GetCurrentFilename());
 				else 
 					LogError("Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
 				// fall through - get next file in chain
-			case NF_EOF:
-				rfd = GetNextFile(rfd, 0, 0, NULL);
-				if ( rfd < 0 ) {
-					if ( rfd == NF_ERROR )
-						LogError("Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
-
-					// rfd == EMPTY_LIST
+			case NF_EOF: {
+				nffile_t *next = GetNextFile(nffile, 0, 0);
+				if ( next == EMPTY_LIST ) {
 					done = 1;
-				} // else continue with next file
+				}
+				if ( next == NULL ) {
+					done = 1;
+					LogError("Unexpected end of file list\n");
+				}
 				continue;
 	
-				break; // not really needed
+				} break; // not really needed
 		}
 
 #ifdef COMPAT15
-		if ( in_block_header.id == DATA_BLOCK_TYPE_1 ) {
-			common_record_v1_t *v1_record = (common_record_v1_t *)in_buff;
+		if ( nffile->block_header->id == DATA_BLOCK_TYPE_1 ) {
+			common_record_v1_t *v1_record = (common_record_v1_t *)nffile->buff_ptr;
 			// create an extension map for v1 blocks
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
@@ -193,23 +194,28 @@ int	v1_map_done = 0;
 			}
 
 			// convert the records to v2
-			for ( i=0; i < in_block_header.NumRecords; i++ ) {
+			for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 				common_record_t *v2_record = (common_record_t *)v1_record;
 				Convert_v1_to_v2((void *)v1_record);
 				// now we have a v2 record -> use size of v2_record->size
 				v1_record = (common_record_v1_t *)((pointer_addr_t)v1_record + v2_record->size);
 			}
-			in_block_header.id = DATA_BLOCK_TYPE_2;
+			nffile->block_header->id = DATA_BLOCK_TYPE_2;
 		}
 #endif
 
-		if ( in_block_header.id != DATA_BLOCK_TYPE_2 ) {
-			LogError("Can't process block type %u. Skip block.\n", in_block_header.id);
+		if ( nffile->block_header->id == Large_BLOCK_Type ) {
+			// skip
 			continue;
 		}
 
-		flow_record = in_buff;
-		for ( i=0; i < in_block_header.NumRecords; i++ ) {
+		if ( nffile->block_header->id != DATA_BLOCK_TYPE_2 ) {
+			LogError("Can't process block type %u. Skip block.\n", nffile->block_header->id);
+			continue;
+		}
+
+		flow_record = nffile->buff_ptr;
+		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			if ( flow_record->type == CommonRecordType ) {
 				if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
 					LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
@@ -234,6 +240,11 @@ int	v1_map_done = 0;
 
 					// update statistics
 					UpdateStat(&channels[j].stat_record, &master_record);
+					if ( channels[j].nffile ) 
+						UpdateStat(channels[j].nffile->stat_record, &master_record);
+
+					if ( channels[j].xstat ) 
+						UpdateXStat(channels[j].xstat, &master_record);
 
 					// do we need to write data to new file - shadow profiles do not have files.
 					// check if we need to flush the output buffer
@@ -274,13 +285,12 @@ int	v1_map_done = 0;
 			if ( channels[j].nffile->block_header->NumRecords ) {
 				if ( WriteBlock(channels[j].nffile) <= 0 ) {
 					LogError("Failed to write output buffer to disk: '%s'" , strerror(errno));
-				} else {
-					channels[j].nffile->file_header->NumBlocks++;
-				}
+				} 
 			} 
 		}
 	}
-	free((void *)in_buff);
+	CloseFile(nffile);
+	DisposeFile(nffile);
 
 } // End of process_data
 
@@ -458,7 +468,7 @@ struct stat stat_buf;
 profile_param_info_t *profile_list;
 char *rfile, *ffile, *filename, *Mdirs, *tstring;
 char	*profile_datadir, *profile_statdir, *nameserver;
-int c, syntax_only, subdir_index, stdin_profile_params;
+int c, syntax_only, subdir_index, stdin_profile_params, do_xstat;
 time_t tslot;
 
 	tstring 		= NULL;
@@ -467,16 +477,21 @@ time_t tslot;
 	Mdirs 			= NULL;
 	tslot 			= 0;
 	syntax_only	    = 0;
+	do_xstat	    = 0;
 	compress		= 0;
 	subdir_index	= 0;
 	profile_list	= NULL;
 	nameserver		= NULL;
 	stdin_profile_params = 0;
+	is_anonymized	= 0;
+
+	strncpy(Ident, "none", IDENTLEN);
+	Ident[IDENTLEN-1] = '\0';
 
 	// default file names
 	ffile = "filter.txt";
 	rfile = NULL;
-	while ((c = getopt(argc, argv, "D:IL:p:P:hf:r:n:M:S:t:VzZ")) != EOF) {
+	while ((c = getopt(argc, argv, "D:HIL:p:P:hf:r:n:M:S:t:VzZ")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -490,6 +505,9 @@ time_t tslot;
 				break;
 			case 'I':
 				stdin_profile_params = 1;
+				break;
+			case 'H':
+				do_xstat = 1;
 				break;
 			case 'L':
 				if ( !InitLog("nfprofile", optarg) )
@@ -508,7 +526,7 @@ time_t tslot;
 				subdir_index = atoi(optarg);
 				break;
 			case 'V':
-				printf("%s: Version: %s %s\n%s\n",argv[0], nfdump_version, nfdump_date, rcsid);
+				printf("%s: Version: %s\n",argv[0], nfdump_version);
 				exit(0);
 				break;
 			case 'f':
@@ -579,7 +597,7 @@ time_t tslot;
 		exit(255);
 	}
 
-	num_channels = InitChannels(profile_datadir, profile_statdir, profile_list, ffile, filename, subdir_index, syntax_only, compress);
+	num_channels = InitChannels(profile_datadir, profile_statdir, profile_list, ffile, filename, subdir_index, syntax_only, compress, do_xstat);
 
 	// nothing to do
 	if ( num_channels == 0 ) {
@@ -601,7 +619,7 @@ time_t tslot;
 
 	SetupInputFileSequence(Mdirs,rfile, NULL);
 
-	process_data(GetChannelInfoList(), num_channels, tslot);
+	process_data(GetChannelInfoList(), num_channels, tslot, do_xstat);
 
 	CloseChannels(tslot, compress);
 

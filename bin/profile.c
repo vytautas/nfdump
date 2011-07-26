@@ -61,6 +61,7 @@
 #include "nfdump.h"
 #include "nffile.h"
 #include "nfstatfile.h"
+#include "nfxstat.h"
 #include "flist.h"
 #include "util.h"
 #include "nftree.h"
@@ -68,6 +69,8 @@
 
 /* imported vars */
 extern char yyerror_buff[256];
+extern uint32_t is_anonymized;
+extern char Ident[IDENTLEN];
 
 static profile_channel_info_t *profile_channels;
 static unsigned int num_channels;
@@ -75,7 +78,7 @@ static unsigned int num_channels;
 static inline int AppendString(char *stack, char *string, size_t	*buff_size);
 
 static void SetupProfileChannels(char *profile_datadir, char *profile_statdir, profile_param_info_t *profile_param, 
-	int subdir_index, char *filterfile, char *filename, int verify_only, int compress   );
+	int subdir_index, char *filterfile, char *filename, int verify_only, int compress, int do_xstat);
 
 profile_channel_info_t	*GetChannelInfoList(void) {
 	return profile_channels;
@@ -97,7 +100,7 @@ size_t len = strlen(string);
 } // End of AppendString
 
 unsigned int InitChannels(char *profile_datadir, char *profile_statdir, profile_param_info_t *profile_list, 
-	char *filterfile, char *filename, int subdir_index, int verify_only, int compress  ) {
+	char *filterfile, char *filename, int subdir_index, int verify_only, int compress, int do_xstat) {
 profile_param_info_t	*profile_param;
 
 	num_channels = 0;
@@ -107,7 +110,7 @@ profile_param_info_t	*profile_param;
 		profile_param->channelname, profile_param->profilename, profile_param->profilegroup, 
 		profile_param->channel_sourcelist);
 
-		SetupProfileChannels(profile_datadir, profile_statdir, profile_param, subdir_index, filterfile, filename, verify_only, compress);
+		SetupProfileChannels(profile_datadir, profile_statdir, profile_param, subdir_index, filterfile, filename, verify_only, compress, do_xstat);
 
 		profile_param = profile_param->next;
 	}
@@ -116,7 +119,7 @@ profile_param_info_t	*profile_param;
 } // End of InitChannels
 
 static void SetupProfileChannels(char *profile_datadir, char *profile_statdir, profile_param_info_t *profile_param, 
-	int subdir_index, char *filterfile, char *filename, int verify_only, int compress ) {
+	int subdir_index, char *filterfile, char *filename, int verify_only, int compress, int do_xstat ) {
 FilterEngine_data_t	*engine;
 struct 	stat stat_buf;
 char 	*p, *filter, *subdir, *wfile, *ofile, *rrdfile, *source_filter;
@@ -124,9 +127,11 @@ char	path[MAXPATHLEN];
 int		ffd, ret;
 size_t	filter_size;
 nffile_t *nffile;
+xstat_t	 *xstat;
 
 	ofile = wfile = NULL;
 	nffile = NULL;
+	xstat  = NULL;
 
 	/* 
 	 * Compile the complete filter:
@@ -261,7 +266,6 @@ nffile_t *nffile;
 	// check for subdir hierarchy
 	subdir = NULL;
 	if ( (profile_param->profiletype & 4) ==  0  ) { // no shadow profile
-		char *string;
 		int is_alert = (profile_param->profiletype & 8) ==  8;
 		if ( !is_alert && subdir_index && strlen(filename) == 19 && (strncmp(filename, "nfcapd.", 7) == 0) ) {
 			char *p = &filename[7];	// points to ISO timstamp in filename
@@ -304,12 +308,16 @@ nffile_t *nffile;
 
 		ofile = strdup(path);
 	
-		nffile = OpenNewFile(path, NULL, compress, 0, &string);
+		nffile = OpenNewFile(path, NULL, compress, 0, NULL);
 		if ( !nffile ) {
-			LogError("%s", string);
 			return;
 		}
-
+		if ( do_xstat ) {
+			xstat = InitXStat(nffile);
+			if ( !xstat ) {
+				return;
+			}
+		}
 	} 
 
 	snprintf(path, MAXPATHLEN-1, "%s/%s/%s/%s.rrd", 
@@ -340,6 +348,7 @@ nffile_t *nffile;
 	profile_channels[num_channels].dirstat_path 			= strdup(path);
 	profile_channels[num_channels].type						= profile_param->profiletype;
 	profile_channels[num_channels].nffile					= nffile;
+	profile_channels[num_channels].xstat					= xstat;
 
 	memset((void *)&profile_channels[num_channels].stat_record, 0, sizeof(stat_record_t));
 
@@ -356,18 +365,20 @@ void CloseChannels (time_t tslot, int compress) {
 dirstat_t	*dirstat;
 struct stat fstat;
 unsigned int num;
-char *s;
 int ret, update_ok;
 
 	for ( num = 0; num < num_channels; num++ ) {
 		if ( profile_channels[num].ofile ) {
-			CloseUpdateFile(profile_channels[num].nffile, &(profile_channels[num].stat_record), GetIdent(), &s );
-			profile_channels[num].nffile = DisposeFile(profile_channels[num].nffile);
-
-			if ( s != NULL ) {
-				LogError("%s\n", s);
-				continue;
+			if ( profile_channels[num].xstat ) {
+				if ( WriteExtraBlock(profile_channels[num].nffile, profile_channels[num].xstat->block_header ) <= 0 ) {
+					LogError("Failed to write xstat buffer to disk: '%s'" , strerror(errno));
+				} 
 			}
+
+			if ( is_anonymized ) 
+				SetFlag(profile_channels[num].nffile->file_header->flags, FLAG_ANONYMIZED);
+			CloseUpdateFile(profile_channels[num].nffile, Ident);
+			profile_channels[num].nffile = DisposeFile(profile_channels[num].nffile);
 
 			stat(profile_channels[num].ofile, &fstat);
 

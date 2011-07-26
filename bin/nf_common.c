@@ -266,7 +266,7 @@ static struct format_token_list_s {
 	//
 	{ "%bps", 0, "     bps", 	 		 	String_bps },			// bps - bits per second
 	{ "%pps", 0, "     pps", 			 	String_pps },			// pps - packets per second
-	{ "%bpp", 0, "   Bpp", 				 	String_bpp },			// bps - Bytes perl package
+	{ "%bpp", 0, "   Bpp", 				 	String_bpp },			// bpp - Bytes per package
 	{ "%eng", 0, " engine", 			 	String_Engine },		// Engine Type/ID
 	{ NULL, 0, NULL, NULL }
 };

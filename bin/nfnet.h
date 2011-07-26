@@ -52,7 +52,7 @@ typedef struct send_peer_s {
 	int			mcast;
 	int			flush;
 	void		*send_buffer;
-	void		*writeto;
+	void		*buff_ptr;
 	void		*endp;
 } send_peer_t;
 

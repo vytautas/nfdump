@@ -59,28 +59,6 @@ typedef struct common_flow_header {
   uint16_t  count;
 } common_flow_header_t;
 
-/* buffer size issues */
-
-// 100MB max buffer size when dynamically extending
-#define MAX_BUFFER_SIZE 104857600	
-
-/* input buffer size, to read data from the network */
-#define NETWORK_INPUT_BUFF_SIZE 65535	// Maximum UDP message size
-
-/* output buffer size, tmp buffer, before writing data to the file 
- * when this buffer is 85% full, it gets written to disk.
- * no read cycle must ever produce more output data than it reads from the network
- * so 8,5 MB + 1 MB = 9.5MB of 10MB
- */
-#define BUFFSIZE 1048576
-
-/* if the output buffer reaches this limit, it gets flushed. This means,
- * that 0.5MB input data may produce max 1MB data in output buffer, otherwise
- * a buffer overflow may occur, and data does not get processed correctly.
- * However, every Process_vx function checks buffer boundaries.
- */
-#define OUTPUT_FLUSH_LIMIT BUFFSIZE * 0.8
-
 
 /* prototypes */
 

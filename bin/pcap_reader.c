@@ -36,6 +36,8 @@
  *
  */
 
+#include <config.h>
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -152,7 +154,9 @@ struct sockaddr_in *in_sock = (struct sockaddr_in *)sock;
 			ip = (struct ip *)&pkt[14];
 			in_sock->sin_family = AF_INET;
 			in_sock->sin_addr = ip->ip_src;
+#ifdef HAVE_STRUCT_SOCKADDR_SA_LEN
 			in_sock->sin_len = sizeof(struct sockaddr_in);
+#endif
 			break;
 		case 0x0806:
 			/* ARP */

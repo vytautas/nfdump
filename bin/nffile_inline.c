@@ -56,10 +56,10 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
 //	printf("Buffer Size %u\n", nffile->block_header->size);
 #endif
 	// flush current buffer to disc
-	if ( (nffile->block_header->size + required )  > BUFFSIZE ) {
+	if ( (nffile->block_header->size + required )  > WRITE_BUFFSIZE ) {
 
 		// this should never happen, but catch it anyway
-		if ( required > BUFFSIZE ) {
+		if ( required > WRITE_BUFFSIZE ) {
 			LogError("Required buffer size %zu too big for output buffer!" , required);
 			return 0;
 		}
@@ -67,12 +67,7 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
 		if ( WriteBlock(nffile) <= 0 ) {
 			LogError("Failed to write output buffer to disk: '%s'" , strerror(errno));
 			return 0;
-		} else {
-			nffile->block_header->size 		 = 0;
-			nffile->block_header->NumRecords = 0;
-			nffile->writeto = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t) );
-			nffile->file_header->NumBlocks++;
-		}
+		} 
 	}
 
 	return 1;
@@ -345,27 +340,12 @@ int		i;
 	master_record->size = required;
 
 	// flush current buffer to disc if not enough space
-	if ( (nffile->block_header->size + required )  > BUFFSIZE ) {
-
-		// this should never happen, but catch it anyway
-		if ( required > BUFFSIZE ) {
-			fprintf(stderr, "Required buffer size %u too big for output buffer!" , required);
-			return;
-		}
-
-		if ( WriteBlock(nffile) <= 0 ) {
-			fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
-			return;
-		} else {
-			nffile->block_header->size 		 = 0;
-			nffile->block_header->NumRecords = 0;
-			nffile->writeto = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t) );
-			nffile->file_header->NumBlocks++;
-		}
+	if ( !CheckBufferSpace(nffile, required) ) {
+		return;
 	}
 
 	// enough buffer space available at this point
-	p = nffile->writeto;
+	p = nffile->buff_ptr;
 
 	// write common record
 	size = COMMON_RECORD_DATA_SIZE;
@@ -569,47 +549,31 @@ int		i;
 	nffile->block_header->size 		+= required;
 	nffile->block_header->NumRecords++;
 #ifdef DEVEL
-	if ( ((pointer_addr_t)p - (pointer_addr_t)nffile->writeto) != required ) {
+	if ( ((pointer_addr_t)p - (pointer_addr_t)nffile->buff_ptr) != required ) {
 		fprintf(stderr, "Packrecord: size missmatch: required: %i, written: %li!\n", 
-			required, (long)((ptrdiff_t)p - (ptrdiff_t)nffile->writeto));
+			required, (long)((ptrdiff_t)p - (ptrdiff_t)nffile->buff_ptr));
 		exit(255);
 	}
 #endif
-	nffile->writeto = p;
+	nffile->buff_ptr = p;
 
 } // End of PackRecord
 
 static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t required) {
 
 	// flush current buffer to disc
-	if ( (nffile->block_header->size + required )  > BUFFSIZE ) {
-
-		// this should never happen, but catch it anyway
-		if ( required > BUFFSIZE ) {
-			fprintf(stderr, "Required buffer size %zu too big for output buffer!" , required);
-			return;
-		}
-
-		if ( WriteBlock(nffile) <= 0 ) {
-			fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
-			return;
-		} else {
-			nffile->block_header->size 		 = 0;
-			nffile->block_header->NumRecords = 0;
-			nffile->writeto = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t) );
-			nffile->file_header->NumBlocks++;
-		}
-
+	if ( !CheckBufferSpace(nffile, required)) {
+		return;
 	}
 
 	// enough buffer space available at this point
-	memcpy(nffile->writeto, record, required);
+	memcpy(nffile->buff_ptr, record, required);
 
 	// update stat
 	nffile->block_header->NumRecords++;
 	nffile->block_header->size += required;
 
 	// advance write pointer
-	nffile->writeto = (void *)((pointer_addr_t)nffile->writeto + required);
+	nffile->buff_ptr = (void *)((pointer_addr_t)nffile->buff_ptr + required);
 
 } // End of AppendToBuffer

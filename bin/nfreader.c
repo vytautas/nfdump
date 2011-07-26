@@ -81,9 +81,6 @@
 #include "util.h"
 #include "flist.h"
 
-#define BUFFSIZE 1048576
-#define MAX_BUFFER_SIZE 104857600
-
 #if ( SIZEOF_VOID_P == 8 )
 typedef uint64_t    pointer_addr_t;
 #else
@@ -167,69 +164,57 @@ master_record_t *r = (master_record_t *)record;
 
 
 static void process_data(void) {
-data_block_header_t block_header;
-master_record_t		master_record;
-common_record_t     *flow_record, *in_buff;
-uint32_t	buffer_size;
-int 		i, rfd, done, ret;
-char		*string;
+master_record_t	master_record;
+common_record_t *flow_record;
+nffile_t		*nffile;
+int 		i, done, ret;
 #ifdef COMPAT15
 int	v1_map_done = 0;
 #endif
 
 	// Get the first file handle
-	rfd = GetNextFile(0, 0, 0, NULL);
-	if ( rfd < 0 ) {
-		if ( rfd == FILE_ERROR )
-			perror("Can't open input file for reading");
-		return;
-	}
-
-	// allocate buffer suitable for netflow version
-	buffer_size = BUFFSIZE;
-	in_buff = (common_record_t *) malloc(buffer_size);
-
-	if ( !in_buff ) {
-		perror("Memory allocation error");
-		close(rfd);
+	nffile = GetNextFile(NULL, 0, 0);
+	if ( !nffile ) {
+		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
 
 	done = 0;
 	while ( !done ) {
 		// get next data block from file
-		ret = ReadBlock(rfd, &block_header, (void *)in_buff, &string);
+		ret = ReadBlock(nffile);
 
 		switch (ret) {
 			case NF_CORRUPT:
 			case NF_ERROR:
 				if ( ret == NF_CORRUPT ) 
-					fprintf(stderr, "Skip corrupt data file '%s': '%s'\n",GetCurrentFilename(), string);
+					fprintf(stderr, "Skip corrupt data file '%s'\n",GetCurrentFilename());
 				else 
 					fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
 				// fall through - get next file in chain
-			case NF_EOF:
-				rfd = GetNextFile(rfd, 0, 0, NULL);
-				if ( rfd < 0 ) {
-					if ( rfd == NF_ERROR )
-						fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
-
-					// rfd == EMPTY_LIST
+			case NF_EOF: {
+				nffile_t *next = GetNextFile(nffile, 0, 0);
+				if ( next == EMPTY_LIST ) {
 					done = 1;
-				} // else continue with next file
+				}
+				if ( next == NULL ) {
+					done = 1;
+					LogError("Unexpected end of file list\n");
+				}
+				// else continue with next file
 				continue;
-	
-				break; // not really needed
+
+				} break; // not really needed
 		}
 
 #ifdef COMPAT15
-		if ( block_header.id == DATA_BLOCK_TYPE_1 ) {
-			common_record_v1_t *v1_record = (common_record_v1_t *)in_buff;
+		if ( nffile->block_header->id == DATA_BLOCK_TYPE_1 ) {
+			common_record_v1_t *v1_record = (common_record_v1_t *)nffile->buff_ptr;
 			// create an extension map for v1 blocks
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
 				if ( ! map ) {
-					perror("Memory allocation error");
+					LogError("malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 					exit(255);
 				}
 				map->type 	= ExtensionMapType;
@@ -245,23 +230,28 @@ int	v1_map_done = 0;
 			}
 
 			// convert the records to v2
-			for ( i=0; i < block_header.NumRecords; i++ ) {
+			for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 				common_record_t *v2_record = (common_record_t *)v1_record;
 				Convert_v1_to_v2((void *)v1_record);
 				// now we have a v2 record -> use size of v2_record->size
 				v1_record = (common_record_v1_t *)((pointer_addr_t)v1_record + v2_record->size);
 			}
-			block_header.id = DATA_BLOCK_TYPE_2;
+			nffile->block_header->id = DATA_BLOCK_TYPE_2;
 		}
 #endif
 
-		if ( block_header.id != DATA_BLOCK_TYPE_2 ) {
-			fprintf(stderr, "Can't process block type %u. Skip block.\n", block_header.id);
+		if ( nffile->block_header->id == Large_BLOCK_Type ) {
+			// skip
 			continue;
 		}
 
-		flow_record = in_buff;
-		for ( i=0; i < block_header.NumRecords; i++ ) {
+		if ( nffile->block_header->id != DATA_BLOCK_TYPE_2 ) {
+			fprintf(stderr, "Can't process block type %u. Skip block.\n", nffile->block_header->id);
+			continue;
+		}
+
+		flow_record = nffile->buff_ptr;
+		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			char        string[1024];
 
 			if ( flow_record->type == CommonRecordType ) {
@@ -303,10 +293,8 @@ int	v1_map_done = 0;
 
 	} // while
 
-	if ( rfd > 0 ) 
-		close(rfd);
-
-	free((void *)in_buff);
+	CloseFile(nffile);
+	DisposeFile(nffile);
 
 	PackExtensionMapList(&extension_map_list);
 

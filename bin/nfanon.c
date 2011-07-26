@@ -64,9 +64,6 @@
 #include "flist.h"
 #include "panonymizer.h"
 
-#define BUFFSIZE 1048576
-#define MAX_BUFFER_SIZE 104857600
-
 #if ( SIZEOF_VOID_P == 8 )
 typedef uint64_t    pointer_addr_t;
 #else
@@ -166,14 +163,13 @@ int		i;
 
 
 static void process_data(void *wfile) {
-data_block_header_t block_header;
 master_record_t		master_record;
-common_record_t     *flow_record, *in_buff;
-stat_record_t		*stat_record, sum_statrecord;
-nffile_t			*nffile;
-uint32_t	buffer_size;
-int 		i, rfd, done, ret, cnt, verbose;
-char		*string, outfile[MAXPATHLEN], *cfile;
+common_record_t     *flow_record;
+stat_record_t		sum_statrecord;
+nffile_t			*nffile_r;
+nffile_t			*nffile_w;
+int 		i, done, ret, cnt, verbose;
+char		outfile[MAXPATHLEN], *cfile;
 #ifdef COMPAT15
 int	v1_map_done = 0;
 #endif
@@ -184,25 +180,15 @@ int	v1_map_done = 0;
 	verbose = 1;
 
 	// Get the first file handle
-	rfd = GetNextFile(0, 0, 0, &stat_record);
-	if ( rfd < 0 ) {
-		if ( rfd == FILE_ERROR )
-			perror("Can't open input file for reading");
+	nffile_r = GetNextFile(NULL, 0, 0);
+	if ( !nffile_r ) {
+		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
 
-	// allocate buffer suitable for netflow version
-	buffer_size = BUFFSIZE;
-	in_buff = (common_record_t *) malloc(buffer_size);
-
-	if ( !in_buff ) {
-		perror("Memory allocation error");
-		close(rfd);
-		return;
-	}
 	cfile = GetCurrentFilename();
 	if ( !cfile ) {
-		if ( rfd == 0 ) { // stdin
+		if ( nffile_r->fd == 0 ) { // stdin
 			outfile[0] = '-';
 			outfile[1] = '\0';
 			verbose = 0;
@@ -220,79 +206,80 @@ int	v1_map_done = 0;
 
 	if ( wfile ) {
 		memset((void *)&sum_statrecord, 0, sizeof(sum_statrecord));
-		SumStatRecords(&sum_statrecord, stat_record);
-		nffile = OpenNewFile(wfile, NULL, IsCompressed(), 1, &string);
+		SumStatRecords(&sum_statrecord, nffile_r->stat_record);
+		nffile_w = OpenNewFile(wfile, NULL, FILE_IS_COMPRESSED(nffile_r), 1, NULL);
 	} else
-		nffile = OpenNewFile(outfile, NULL, IsCompressed(), 1, &string);
+		nffile_w = OpenNewFile(outfile, NULL, FILE_IS_COMPRESSED(nffile_r), 1, NULL);
 
-	if ( !nffile ) {
-		fprintf(stderr, "%s\n", string);
-		if ( rfd ) 
-			close(rfd);
-		free(in_buff);
+	if ( !nffile_w ) {
+		if ( nffile_r ) {
+			CloseFile(nffile_r);
+			DisposeFile(nffile_r);
+		}
 		return;
 	}
 
 	done = 0;
 	while ( !done ) {
 		// get next data block from file
-		ret = ReadBlock(rfd, &block_header, (void *)in_buff, &string);
+		ret = ReadBlock(nffile_r);
 
 		switch (ret) {
 			case NF_CORRUPT:
 			case NF_ERROR:
 				if ( ret == NF_CORRUPT ) 
-					fprintf(stderr, "Skip corrupt data file '%s': '%s'\n",GetCurrentFilename(), string);
+					LogError("Skip corrupt data file '%s'\n",GetCurrentFilename());
 				else 
-					fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
+					LogError("Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
 				// fall through - get next file in chain
 			case NF_EOF: {
-				char *string;
-    			if ( nffile->block_header->NumRecords ) {
-        			if ( WriteBlock(nffile) <= 0 ) {
-            			fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
+				nffile_t *next;
+    			if ( nffile_w->block_header->NumRecords ) {
+        			if ( WriteBlock(nffile_w) <= 0 ) {
+            			LogError("Failed to write output buffer to disk: '%s'" , strerror(errno));
         			} 
     			}
 				if ( wfile == NULL ) {
-					CloseUpdateFile(nffile, stat_record, GetIdent(), &string );
+					CloseUpdateFile(nffile_w, nffile_r->file_header->ident);
 					if ( rename(outfile, cfile) < 0 ) {
-						fprintf(stderr, "\nrename() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-						fprintf(stderr, "Abort processing.\n");
+						LogError("\nrename() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+						LogError("Abort processing.\n");
 						return;
 					}
 				}
 
-				rfd = GetNextFile(rfd, 0, 0, &stat_record);
-				if ( rfd < 0 ) {
-					if ( rfd == NF_ERROR )
-						fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
-
-					// rfd == EMPTY_LIST
+				next = GetNextFile(nffile_r, 0, 0);
+				if ( next == EMPTY_LIST ) {
 					done = 1;
 					continue;
-				} 
+				}
+				if ( next == NULL ) {
+					LogError("Unexpected end of file list\n");
+					done = 1;
+					continue;
+				}
 
 				cfile = GetCurrentFilename();
 				if ( !cfile ) {
-					fprintf(stderr, "(NULL) input file name error in %s line %d\n", __FILE__, __LINE__);
+					LogError("(NULL) input file name error in %s line %d\n", __FILE__, __LINE__);
 					return;
 				}
-				fprintf(stderr, " %i Processing %s\r", cnt++, cfile);
+				LogError(" %i Processing %s\r", cnt++, cfile);
 
 				if ( wfile == NULL ) {
 					snprintf(outfile,MAXPATHLEN-1, "%s-tmp", cfile);
 					outfile[MAXPATHLEN-1] = '\0';
 
-					nffile = OpenNewFile(outfile, nffile, IsCompressed(), 1, &string);
-					if ( !nffile ) {
-						fprintf(stderr, "%s\n", string);
-						if ( rfd ) 
-							close(rfd);
-						free(in_buff);
+					nffile_w = OpenNewFile(outfile, nffile_w, FILE_IS_COMPRESSED(nffile_r), 1, NULL);
+					if ( !nffile_w ) {
+						if ( nffile_r ) {
+							CloseFile(nffile_r);
+							DisposeFile(nffile_r);
+						}
 						return;
 					}
 				} else {
-					SumStatRecords(&sum_statrecord, stat_record);
+					SumStatRecords(&sum_statrecord, nffile_r->stat_record);
 				}
 
 				// continue with next file
@@ -302,8 +289,8 @@ int	v1_map_done = 0;
 		}
 
 #ifdef COMPAT15
-		if ( block_header.id == DATA_BLOCK_TYPE_1 ) {
-			common_record_v1_t *v1_record = (common_record_v1_t *)in_buff;
+		if ( nffile_r->block_header->id == DATA_BLOCK_TYPE_1 ) {
+			common_record_v1_t *v1_record = (common_record_v1_t *)nffile_r->buff_ptr;
 			// create an extension map for v1 blocks
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
@@ -319,36 +306,38 @@ int	v1_map_done = 0;
 				map->ex_id[2]  = 0;
 
 				Insert_Extension_Map(&extension_map_list, map);
-				AppendToBuffer(&nffile, (void *)map, map->size);
+				AppendToBuffer(nffile_w, (void *)map, map->size);
 
 				v1_map_done = 1;
 			}
 
 			// convert the records to v2
-			for ( i=0; i < block_header.NumRecords; i++ ) {
+			for ( i=0; i < nffile_r->block_header->NumRecords; i++ ) {
 				common_record_t *v2_record = (common_record_t *)v1_record;
 				Convert_v1_to_v2((void *)v1_record);
 				// now we have a v2 record -> use size of v2_record->size
 				v1_record = (common_record_v1_t *)((pointer_addr_t)v1_record + v2_record->size);
 			}
-			block_header.id = DATA_BLOCK_TYPE_2;
+			nffile_r->block_header->id = DATA_BLOCK_TYPE_2;
 		}
 #endif
 
-		if ( block_header.id != DATA_BLOCK_TYPE_2 ) {
-			fprintf(stderr, "Can't process block type %u. Skip block.\n", block_header.id);
+		if ( nffile_r->block_header->id == Large_BLOCK_Type ) {
+			// skip
 			continue;
 		}
 
-		flow_record = in_buff;
-		for ( i=0; i < block_header.NumRecords; i++ ) {
-			char        string[1024];
+		if ( nffile_r->block_header->id != DATA_BLOCK_TYPE_2 ) {
+			fprintf(stderr, "Can't process block type %u. Skip block.\n", nffile_r->block_header->id);
+			continue;
+		}
 
+		flow_record = nffile_r->buff_ptr;
+		for ( i=0; i < nffile_r->block_header->NumRecords; i++ ) {
 			if ( flow_record->type == CommonRecordType ) {
 				uint32_t map_id = flow_record->ext_map;
 				if ( extension_map_list.slot[map_id] == NULL ) {
-					snprintf(string, 1024, "Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
-					string[1023] = '\0';
+					LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
 				} else {
 					ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], &master_record);
 
@@ -356,7 +345,7 @@ int	v1_map_done = 0;
 					extension_map_list.slot[map_id]->ref_count++;
 			
 					AnonRecord(&master_record);
-					PackRecord(&master_record, nffile);
+					PackRecord(&master_record, nffile_w);
 				}
 
 			} else if ( flow_record->type == ExtensionMapType ) {
@@ -365,7 +354,7 @@ int	v1_map_done = 0;
 				if ( Insert_Extension_Map(&extension_map_list, map) ) {
 					 // flush new map
 				} // else map already known and flushed
-				AppendToBuffer(nffile, (void *)map, map->size);
+				AppendToBuffer(nffile_w, (void *)map, map->size);
 
 			} else {
 				fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
@@ -378,14 +367,14 @@ int	v1_map_done = 0;
 
 	} // while
 
-	if ( rfd > 0 ) 
-		close(rfd);
+	if ( nffile_r ) {
+		CloseFile(nffile_r);
+		DisposeFile(nffile_r);
+	}
+	DisposeFile(nffile_w);
 
-	DisposeFile(nffile);
-
-	free((void *)in_buff);
-	fprintf(stderr, "\n");
-	fprintf(stderr, "Processed %i files.\n", --cnt);
+	LogError("\n");
+	LogError("Processed %i files.\n", --cnt);
 	PackExtensionMapList(&extension_map_list);
 
 } // End of process_data

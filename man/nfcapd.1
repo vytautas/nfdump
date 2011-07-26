@@ -12,7 +12,7 @@ is automatically rotated and renamed every n minutes \- typically
 5 min \- according the timestamp YYYYMMddhhmm of the interval e.g. 
 nfcapd.200907110845 contains the data from July 11th 2009 08:45 onward.
 .P
-Netflow version v5, v7 and v9 are transparently supported.
+Netflow version v1, v5, v7 and v9 are transparently supported.
 .P
 Extensions: nfcapd supports a large number of v9 tags. In order to optimise
 disk space and performance, v9 tags are grouped into a number of extensions
@@ -222,6 +222,10 @@ becomes available. The following command expansion is available:
 %i	Replaced ident string given by \-I
 .RE
 .PD
+.TP 3
+.B -X
+Collect and embed extended statistics. Currently a port and bpp histogram 
+is embeded. Mostly experimental for now
 .TP 3
 .B -e 
 Auto expire files at every cycle. \fImax lifetime\fP and \fImax filesize\fP

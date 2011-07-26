@@ -61,6 +61,7 @@
 #include "nfx.h"
 #include "nfnet.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "nf_common.h"
 #include "netflow_v5_v7.h"
@@ -72,7 +73,6 @@
 #include "nfstat.h"
 #include "nfexport.h"
 #include "ipconv.h"
-#include "version.h"
 #include "util.h"
 #include "flist.h"
 
@@ -89,11 +89,14 @@ extern uint32_t loopcnt;
 extern extension_descriptor_t extension_descriptor[];
 
 /* Local Variables */
-static char const *rcsid 		  = "$Id: nfdump.c 69 2010-09-09 07:17:43Z haag $";
+const char *nfdump_version = VERSION;
+
 static uint64_t total_bytes;
 static uint32_t total_flows;
 static uint32_t skipped_blocks;
-static time_t t_first_flow, t_last_flow;
+static uint32_t	is_anonymized;
+static time_t 	t_first_flow, t_last_flow;
+static char		Ident[IDENTLEN];
 
 int hash_hit = 0; 
 int hash_miss = 0;
@@ -231,7 +234,7 @@ static void PrintSummary(stat_record_t *stat_record, int plain_numbers, int csv_
 
 static stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
 	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
-	uint64_t limitflows, int tag, int compress);
+	uint64_t limitflows, int tag, int compress, int do_xstat);
 
 /* Functions */
 
@@ -257,6 +260,7 @@ static void usage(char *name) {
 					"-s <expr>[/<order>]\tGenerate statistics for <expr> any valid record element.\n"
 					"\t\tand ordered by <order>: packets, bytes, flows, bps pps and bpp.\n"
 					"-q\t\tQuiet: Do not print the header and bottom stat lines.\n"
+					"-H Add xstat histogram data to flow file.(default 'no')\n"
 					"-i <ident>\tChange Ident to <ident> in file given by -r.\n"
 					"-j <file>\tCompress/Uncompress file.\n"
 					"-z\t\tCompress flows in output file. Used in combination with -w.\n"
@@ -328,14 +332,13 @@ char 		byte_str[32], packet_str[32], bps_str[32], pps_str[32], bpp_str[32];
 
 stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
 	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
-	uint64_t limitflows, int tag, int compress) {
-data_block_header_t in_block_header;					
-common_record_t 	*flow_record, *in_buff;
+	uint64_t limitflows, int tag, int compress, int do_xstat) {
+common_record_t 	*flow_record;
 master_record_t		*master_record;
-nffile_t			*nffile;
+nffile_t			*nffile_w, *nffile_r;
+xstat_t				*xstat;
 stat_record_t 		stat_record;
-int 				rfd, done, write_file;
-char 				*string;
+int 				done, write_file;
 
 #ifdef COMPAT15
 int	v1_map_done = 0;
@@ -368,34 +371,43 @@ int	v1_map_done = 0;
 	// do not write flows to file, when doing any stats
 	// -w may apply for flow_stats later
 	write_file = !(sort_flows || flow_stat || element_stat) && wfile;
-	nffile = NULL;
-
-	// allocate network buffer
-	in_buff = (common_record_t *) malloc(BUFFSIZE);
-	if ( !in_buff ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		return stat_record;
-	}
+	nffile_r = NULL;
+	nffile_w = NULL;
+	xstat  	 = NULL;
 
 	// Get the first file handle
-	rfd = GetNextFile(0, twin_start, twin_end, NULL);
-	if ( rfd < 0 ) {
-		if ( rfd == FILE_ERROR )
-			fprintf(stderr, "GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		free(in_buff);
+	nffile_r = GetNextFile(NULL, twin_start, twin_end);
+	if ( !nffile_r ) {
+		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return stat_record;
 	}
 
-	// prepare file is requested
+	// store infos away for later use
+	// although multiple files may be processed, it is assumed that all 
+	// have the same settings
+	is_anonymized = IP_ANONYMIZED(nffile_r);
+	strncpy(Ident, nffile_r->file_header->ident, IDENTLEN);
+	Ident[IDENTLEN-1] = '\0';
+
+	// prepare output file if requested
 	if ( write_file ) {
-		char *string;
-		nffile = OpenNewFile(wfile, NULL, compress, IsAnonymized(), &string);
-		if ( !nffile ) {
-			fprintf(stderr, "%s\n", string);
-			if ( rfd ) 
-				close(rfd);
-			free(in_buff);
+		nffile_w = OpenNewFile(wfile, NULL, compress, IP_ANONYMIZED(nffile_r), NULL );
+		if ( !nffile_w ) {
+			if ( nffile_r ) {
+				CloseFile(nffile_r);
+				DisposeFile(nffile_r);
+			}
 			return stat_record;
+		}
+		if ( do_xstat ) {
+			xstat = InitXStat(nffile_w);
+			if ( !xstat ) {
+				if ( nffile_r ) {
+					CloseFile(nffile_r);
+					DisposeFile(nffile_r);
+				}
+				return stat_record;
+			}
 		}
 	}
 
@@ -408,28 +420,29 @@ int	v1_map_done = 0;
 	int i, ret;
 
 		// get next data block from file
-		ret = ReadBlock(rfd, &in_block_header, (void *)in_buff, &string);
+		ret = ReadBlock(nffile_r);
 
 		switch (ret) {
 			case NF_CORRUPT:
 			case NF_ERROR:
 				if ( ret == NF_CORRUPT ) 
-					fprintf(stderr, "Skip corrupt data file '%s': '%s'\n",GetCurrentFilename(), string);
+					LogError("Skip corrupt data file '%s'\n",GetCurrentFilename());
 				else 
-					fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
+					LogError("Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
 				// fall through - get next file in chain
-			case NF_EOF:
-				rfd = GetNextFile(rfd, twin_start, twin_end, NULL);
-				if ( rfd < 0 ) {
-					if ( rfd == NF_ERROR )
-						fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
-
-					// rfd == EMPTY_LIST
+			case NF_EOF: {
+				nffile_t *next = GetNextFile(nffile_r, twin_start, twin_end);
+				if ( next == EMPTY_LIST ) {
 					done = 1;
-				} // else continue with next file
+				}
+				if ( next == NULL ) {
+					done = 1;
+					LogError("Unexpected end of file list\n");
+				}
+				// else continue with next file
 				continue;
-	
-				break; // not really needed
+
+				} break; // not really needed
 			default:
 				// successfully read block
 				total_bytes += ret;
@@ -437,8 +450,8 @@ int	v1_map_done = 0;
 
 
 #ifdef COMPAT15
-		if ( in_block_header.id == DATA_BLOCK_TYPE_1 ) {
-			common_record_v1_t *v1_record = (common_record_v1_t *)in_buff;
+		if ( nffile_r->block_header->id == DATA_BLOCK_TYPE_1 ) {
+			common_record_v1_t *v1_record = (common_record_v1_t *)nffile_r->buff_ptr;
 			// create an extension map for v1 blocks
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
@@ -464,45 +477,51 @@ int	v1_map_done = 0;
 
 				if ( Insert_Extension_Map(&extension_map_list,map) && write_file ) {
 					// flush new map
-					AppendToBuffer(nffile, (void *)map, map->size);
+					AppendToBuffer(nffile_w, (void *)map, map->size);
 				} // else map already known and flushed
 
 				v1_map_done = 1;
 			}
 
 			// convert the records to v2
-			for ( i=0; i < in_block_header.NumRecords; i++ ) {
+			for ( i=0; i < nffile_r->block_header->NumRecords; i++ ) {
 				common_record_t *v2_record = (common_record_t *)v1_record;
 				Convert_v1_to_v2((void *)v1_record);
 				// now we have a v2 record -> use size of v2_record->size
 				v1_record = (common_record_v1_t *)((pointer_addr_t)v1_record + v2_record->size);
 			}
-			in_block_header.id = DATA_BLOCK_TYPE_2;
+			nffile_r->block_header->id = DATA_BLOCK_TYPE_2;
 		}
 #endif
 
-		if ( in_block_header.id != DATA_BLOCK_TYPE_2 ) {
-			if ( in_block_header.id == DATA_BLOCK_TYPE_1 ) {
-				fprintf(stderr, "Can't process nfdump 1.5.x block type 1. Add --enable-compat15 to compile compatibility code. Skip block.\n");
+		if ( nffile_r->block_header->id == Large_BLOCK_Type ) {
+			// skip
+			printf("Xstat block skipped ...\n");
+			continue;
+		}
+
+		if ( nffile_r->block_header->id != DATA_BLOCK_TYPE_2 ) {
+			if ( nffile_r->block_header->id == DATA_BLOCK_TYPE_1 ) {
+				LogError("Can't process nfdump 1.5.x block type 1. Add --enable-compat15 to compile compatibility code. Skip block.\n");
 			} else {
-				fprintf(stderr, "Can't process block type %u. Skip block.\n", in_block_header.id);
+				LogError("Can't process block type %u. Skip block.\n", nffile_r->block_header->id);
 			}
 			skipped_blocks++;
 			continue;
 		}
 
-		flow_record = in_buff;
-		for ( i=0; i < in_block_header.NumRecords; i++ ) {
+		flow_record = nffile_r->buff_ptr;
+		for ( i=0; i < nffile_r->block_header->NumRecords; i++ ) {
 
 			if ( flow_record->type == CommonRecordType ) {
 				int match;
 				uint32_t map_id = flow_record->ext_map;
 				if ( map_id >= MAX_EXTENSION_MAPS ) {
-					fprintf(stderr, "Corrupt data file. Extension map id %u too big.\n", flow_record->ext_map);
+					LogError("Corrupt data file. Extension map id %u too big.\n", flow_record->ext_map);
 					exit(255);
 				}
 				if ( extension_map_list.slot[map_id] == NULL ) {
-					fprintf(stderr, "Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
+					LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
 					flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 					continue;
 				} 
@@ -554,9 +573,12 @@ int	v1_map_done = 0;
 
 
 					if ( write_file ) {
-						AppendToBuffer(nffile, (void *)flow_record, flow_record->size);
-					} else if ( print_record ) {
+						AppendToBuffer(nffile_w, (void *)flow_record, flow_record->size);
+						if ( xstat ) 
+							UpdateXStat(xstat, master_record);
 
+					} else if ( print_record ) {
+						char *string;
 						// if we need to print out this record
 						print_record(master_record, &string, tag);
 						if ( string ) {
@@ -578,10 +600,10 @@ int	v1_map_done = 0;
 
 				if ( Insert_Extension_Map(&extension_map_list, map) && write_file ) {
 					// flush new map
-					AppendToBuffer(nffile, (void *)map, map->size);
+					AppendToBuffer(nffile_w, (void *)map, map->size);
 				} // else map already known and flushed
 			} else {
-				fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
+				LogError("Skip unknown record type %i\n", flow_record->type);
 			}
 
 			// Advance pointer by number of bytes for netflow record
@@ -596,33 +618,35 @@ int	v1_map_done = 0;
 
 	} // while
 
-	if ( rfd > 0 ) 
-		close(rfd);
+	CloseFile(nffile_r);
 
 	// flush output file
 	if ( write_file ) {
 		// flush current buffer to disc
-		if ( nffile->block_header->NumRecords ) {
-			if ( WriteBlock(nffile) <= 0 ) {
-				fprintf(stderr, "Failed to write output buffer to disk: '%s'" , strerror(errno));
-			} else {
-				nffile->file_header->NumBlocks++;
-			}
+		if ( nffile_w->block_header->NumRecords ) {
+			if ( WriteBlock(nffile_w) <= 0 ) {
+				LogError("Failed to write output buffer to disk: '%s'" , strerror(errno));
+			} 
+		}
+
+		if ( xstat ) {
+			if ( WriteExtraBlock(nffile_w, xstat->block_header ) <= 0 ) {
+				LogError("Failed to write xstat buffer to disk: '%s'" , strerror(errno));
+			} 
 		}
 
 		/* Stat info */
 		if ( write_file ) {
-			/* Write stat info and close file */
-			CloseUpdateFile(nffile, &stat_record, GetIdent(), &string );
-			if ( string != NULL )
-				fprintf(stderr, "%s\n", string);
-			nffile = DisposeFile(nffile);
+			/* Copy stat info and close file */
+			memcpy((void *)nffile_w->stat_record, (void *)&stat_record, sizeof(stat_record_t));
+			CloseUpdateFile(nffile_w, nffile_r->file_header->ident );
+			nffile_w = DisposeFile(nffile_w);
 		} // else stdout
 	}	 
 
 	PackExtensionMapList(&extension_map_list);
 
-	free((void *)in_buff);
+	DisposeFile(nffile_r);
 	return stat_record;
 
 } // End of process_data
@@ -630,7 +654,7 @@ int	v1_map_done = 0;
 
 int main( int argc, char **argv ) {
 struct stat stat_buff;
-stat_record_t	sum_stat, *sr;
+stat_record_t	sum_stat;
 printer_t 	print_header, print_record;
 nfprof_t 	profile_data;
 char 		*rfile, *Rfile, *Mdirs, *wfile, *ffile, *filter, *tstring, *stat_type;
@@ -638,13 +662,13 @@ char		*byte_limit_string, *packet_limit_string, *print_mode, *record_header;
 char		*order_by, *query_file, *UnCompress_file, *nameserver, *aggr_fmt;
 int 		c, ffd, ret, element_stat, fdump;
 int 		i, user_format, quiet, flow_stat, topN, aggregate, aggregate_mask, bidir;
-int 		print_stat, syntax_only, date_sorted, do_tag, compress;
+int 		print_stat, syntax_only, date_sorted, do_tag, compress, do_xstat;
 int			plain_numbers, GuessDir, pipe_output, csv_output;
 time_t 		t_start, t_end;
 uint16_t	Aggregate_Bits;
 uint32_t	limitflows;
 uint64_t	AggregateMasks[AGGR_SIZE];
-char 		Ident[IdentLen];
+char 		Ident[IDENTLEN];
 
 	rfile = Rfile = Mdirs = wfile = ffile = filter = tstring = stat_type = NULL;
 	byte_limit_string = packet_limit_string = NULL;
@@ -657,6 +681,7 @@ char 		Ident[IdentLen];
 	flow_stat       = 0;
 	print_stat      = 0;
 	element_stat  	= 0;
+	do_xstat 		= 0;
 	limitflows		= 0;
 	date_sorted		= 0;
 	total_bytes		= 0;
@@ -669,6 +694,7 @@ char 		Ident[IdentLen];
 	plain_numbers   = 0;
 	pipe_output		= 0;
 	csv_output		= 0;
+	is_anonymized	= 0;
 	GuessDir		= 0;
 	nameserver		= NULL;
 
@@ -687,7 +713,7 @@ char 		Ident[IdentLen];
 
 	for ( i=0; i<AGGR_SIZE; AggregateMasks[i++] = 0 ) ;
 
-	while ((c = getopt(argc, argv, "6aA:Bbc:D:s:hn:i:j:f:qzr:v:w:K:M:NImO:R:XZt:TVv:x:l:L:o:")) != EOF) {
+	while ((c = getopt(argc, argv, "6aA:Bbc:D:s:hHn:i:j:f:qzr:v:w:K:M:NImO:R:XZt:TVv:x:l:L:o:")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -733,7 +759,7 @@ char 		Ident[IdentLen];
 			case 'c':	
 				limitflows = atoi(optarg);
 				if ( !limitflows ) {
-					fprintf(stderr, "Option -c needs a number > 0\n");
+					LogError("Option -c needs a number > 0\n");
 					exit(255);
 				}
 				break;
@@ -744,15 +770,18 @@ char 		Ident[IdentLen];
                 } 
 				break;
 			case 'V':
-				printf("%s: Version: %s %s\n%s\n",argv[0], nfdump_version, nfdump_date, rcsid);
+				printf("%s: Version: %s\n",argv[0], nfdump_version);
 				exit(0);
 				break;
 			case 'l':
 				packet_limit_string = optarg;
 				break;
 			case 'K':
-				fprintf(stderr, "*** Anonymisation moved! Use nfanon to anonymise flows!\n");
+				LogError("*** Anonymisation moved! Use nfanon to anonymise flows!\n");
 				exit(255);
+				break;
+			case 'H':
+				do_xstat = 1;
 				break;
 			case 'L':
 				byte_limit_string = optarg;
@@ -786,7 +815,7 @@ char 		Ident[IdentLen];
 			case 'O':	// stat order by
 				order_by = optarg;
 				if ( !SetStat_DefaultOrder(order_by) ) {
-					fprintf(stderr, "Order '%s' unknown!\n", order_by);
+					LogError("Order '%s' unknown!\n", order_by);
 					exit(255);
 				}
 				break;
@@ -799,7 +828,7 @@ char 		Ident[IdentLen];
 			case 'n':
 				topN = atoi(optarg);
 				if ( topN < 0 ) {
-					fprintf(stderr, "TopnN number %i out of range\n", topN);
+					LogError("TopnN number %i out of range\n", topN);
 					exit(255);
 				}
 				break;
@@ -810,7 +839,7 @@ char 		Ident[IdentLen];
 				strncpy(Ident, optarg, IDENT_SIZE);
 				Ident[IDENT_SIZE - 1] = 0;
 				if ( strchr(Ident, ' ') ) {
-					fprintf(stderr,"Ident must not contain spaces\n");
+					LogError("Ident must not contain spaces\n");
 					exit(255);
 				}
 				break;
@@ -848,13 +877,12 @@ char 		Ident[IdentLen];
 	
 	// Change Ident only
 	if ( rfile && strlen(Ident) > 0 ) {
-		char *err;
-		ChangeIdent(rfile, Ident, &err);
+		ChangeIdent(rfile, Ident);
 		exit(0);
 	}
 
 	if ( (element_stat && !flow_stat) && aggregate_mask ) {
-		fprintf(stderr, "Warning: Aggregation ignored for element statistics\n");
+		LogError("Warning: Aggregation ignored for element statistics\n");
 		aggregate_mask = 0;
 	}
 
@@ -863,11 +891,11 @@ char 		Ident[IdentLen];
 	}
 
 	if ( rfile && Rfile ) {
-		fprintf(stderr, "-r and -R are mutually exclusive. Plase specify either -r or -R\n");
+		LogError("-r and -R are mutually exclusive. Plase specify either -r or -R\n");
 		exit(255);
 	}
 	if ( Mdirs && !(rfile || Rfile) ) {
-		fprintf(stderr, "-M needs either -r or -R to specify the file or file list. Add '-R .' for all files in the directories.\n");
+		LogError("-M needs either -r or -R to specify the file or file list. Add '-R .' for all files in the directories.\n");
 		exit(255);
 	}
 
@@ -876,23 +904,23 @@ char 		Ident[IdentLen];
 	SetupInputFileSequence(Mdirs, rfile, Rfile);
 
 	if ( print_stat ) {
+		nffile_t *nffile;
 		if ( !rfile && !Rfile && !Mdirs) {
-			fprintf(stderr, "Expect data file(s).\n");
+			LogError("Expect data file(s).\n");
 			exit(255);
 		}
 
 		memset((void *)&sum_stat, 0, sizeof(stat_record_t));
 		sum_stat.first_seen = 0x7fffffff;
 		sum_stat.msec_first = 999;
-		ffd = GetNextFile(0, 0, 0, &sr);
-		if ( ffd <= 0 ) {
-			if ( ffd == FILE_ERROR )
-				fprintf(stderr, "Error open file: %s\n", strerror(errno));
+		nffile = GetNextFile(NULL, 0, 0);
+		if ( !nffile ) {
+			LogError("Error open file: %s\n", strerror(errno));
 			exit(250);
 		}
-		while ( ffd > 0 ) {
-			SumStatRecords(&sum_stat, sr);
-			ffd = GetNextFile(ffd, 0, 0, &sr);
+		while ( nffile && nffile != EMPTY_LIST ) {
+			SumStatRecords(&sum_stat, nffile->stat_record);
+			nffile = GetNextFile(nffile, 0, 0);
 		}
 		PrintStat(&sum_stat);
 		exit(0);
@@ -906,7 +934,7 @@ char 		Ident[IdentLen];
 			int len = strlen(AggrPrependFmt) + strlen(aggr_fmt) + strlen(AggrAppendFmt) + 7;	// +7 for 'fmt:', 2 spaces and '\0'
 			print_mode = malloc(len);
 			if ( !print_mode ) {
-				fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+				LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 				exit(255);
 			}
 			snprintf(print_mode, len, "fmt:%s %s %s",AggrPrependFmt, aggr_fmt, AggrAppendFmt );
@@ -927,7 +955,7 @@ char 		Ident[IdentLen];
 			record_header = get_record_header();
 			user_format	  = 1;
 		} else {
-			fprintf(stderr, "Missing format description for user defined output format!\n");
+			LogError("Missing format description for user defined output format!\n");
 			exit(255);
 		}
 	} else {
@@ -974,7 +1002,7 @@ char 		Ident[IdentLen];
 	}
 
 	if ( !print_record ) {
-		fprintf(stderr, "Unknown output mode '%s'\n", print_mode);
+		LogError("Unknown output mode '%s'\n", print_mode);
 		exit(255);
 	}
 
@@ -984,22 +1012,22 @@ char 		Ident[IdentLen];
 	
 	if ( aggregate && (flow_stat || element_stat) ) {
 		aggregate = 0;
-		fprintf(stderr, "Command line switch -s overwrites -a\n");
+		LogError("Command line switch -s overwrites -a\n");
 	}
 
 	if ( !filter && ffile ) {
 		if ( stat(ffile, &stat_buff) ) {
-			fprintf(stderr, "Can't stat filter file '%s': %s\n", ffile, strerror(errno));
+			LogError("Can't stat filter file '%s': %s\n", ffile, strerror(errno));
 			exit(255);
 		}
 		filter = (char *)malloc(stat_buff.st_size+1);
 		if ( !filter ) {
-			perror("Memory allocation error");
+			LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 			exit(255);
 		}
 		ffd = open(ffile, O_RDONLY);
 		if ( ffd < 0 ) {
-			fprintf(stderr, "Can't open filter file '%s': %s\n", ffile, strerror(errno));
+			LogError("Can't open filter file '%s': %s\n", ffile, strerror(errno));
 			exit(255);
 		}
 		ret = read(ffd, (void *)filter, stat_buff.st_size);
@@ -1071,7 +1099,7 @@ char 		Ident[IdentLen];
 	nfprof_start(&profile_data);
 	sum_stat = process_data(wfile, element_stat, aggregate || flow_stat, date_sorted,
 						print_header, print_record, t_start, t_end, 
-						limitflows, do_tag, compress);
+						limitflows, do_tag, compress, do_xstat);
 	nfprof_end(&profile_data, total_flows);
 
 	if ( total_bytes == 0 )
@@ -1080,7 +1108,16 @@ char 		Ident[IdentLen];
 
 	if (aggregate || date_sorted) {
 		if ( wfile ) {
-			ExportFlowTable(wfile, compress, aggregate, bidir, date_sorted);
+			nffile_t *nffile = OpenNewFile(wfile, NULL, compress, is_anonymized, NULL);
+			if ( !nffile ) 
+				exit(255);
+			if ( ExportFlowTable(nffile, aggregate, bidir, date_sorted) ) {
+				CloseUpdateFile(nffile, Ident );	
+			} else {
+				CloseFile(nffile);
+				unlink(wfile);
+			}
+			DisposeFile(nffile);
 		} else {
 			PrintFlowTable(print_record, limitflows, date_sorted, do_tag, GuessDir);
 		}
@@ -1101,7 +1138,7 @@ char 		Ident[IdentLen];
 		if ( csv_output ) {
 			PrintSummary(&sum_stat, plain_numbers, csv_output);
 		} else if ( !wfile ) {
-			if (IsAnonymized())
+			if (is_anonymized)
 				printf("IP addresses anonymised\n");
 			PrintSummary(&sum_stat, plain_numbers, csv_output);
  			printf("Time window: %s\n", TimeString(t_first_flow, t_last_flow));

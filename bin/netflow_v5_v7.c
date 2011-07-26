@@ -43,8 +43,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <syslog.h>
-#include <arpa/inet.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <errno.h>
 #include <string.h>
 
@@ -58,6 +58,7 @@
 #include "nfnet.h"
 #include "nf_common.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "netflow_v5_v7.h"
 
@@ -251,14 +252,14 @@ char ipstr[IP_STRING_LEN];
 		strncpy(ipstr, "<unknown>", IP_STRING_LEN);
 	}
 
-	dbg_printf("New Exporter: v5 Extension ID: %i, IP: %s, Sampling Mode: %i, Sampling Interval: %i\n", 
+	dbg_printf("New Exporter: v5 Extension ID: %i, IP: %s, Sampling Mode: %i, Sampling Interval: %u\n", 
 		(*e)->extension_map->map_id, ipstr, (*e)->sampling_mode	,(*e)->sampling_interval);
-	syslog(LOG_INFO, "Process_v5: New exporter: engine id %u, type %u, IP: %s, Sampling Mode: %i, Sampling Interval: %i\n", 
+	syslog(LOG_INFO, "Process_v5: New exporter: engine id %u, type %u, IP: %s, Sampling Mode: %i, Sampling Interval: %u\n", 
 		( engine_tag & 0xFF ),  ( (engine_tag >> 8) & 0xFF ), ipstr, (*e)->sampling_mode	,(*e)->sampling_interval         );
 
 	if ( overwrite_sampling > 0 )  {
 		(*e)->sampling_interval = overwrite_sampling;
-		syslog(LOG_INFO, "Process_v5: Hard overwrite sampling rate: %llu\n", (*e)->sampling_interval);
+		syslog(LOG_INFO, "Process_v5: Hard overwrite sampling rate: %u\n", (*e)->sampling_interval);
 	}
 
 	return (*e);
@@ -301,7 +302,7 @@ char		*string;
 		// this many data to process
 		size_left	= in_buff_cnt;
 
-		common_record = fs->nffile->writeto;
+		common_record = fs->nffile->buff_ptr;
 		done = 0;
 		while ( !done ) {
 			v5_block_t			*v5_block;
@@ -312,14 +313,14 @@ char		*string;
 	  		count	= ntohs(v5_header->count);
 			if ( count > NETFLOW_V5_MAX_RECORDS ) {
 				syslog(LOG_ERR,"Process_v5: Unexpected record count in header: %i. Abort v5/v7 record processing", count);
-				fs->nffile->writeto = (void *)common_record;
+				fs->nffile->buff_ptr = (void *)common_record;
 				return;
 			}
 
 			// input buffer size check for all expected records
 			if ( size_left < ( NETFLOW_V5_HEADER_LENGTH + count * flow_record_length) ) {
 				syslog(LOG_ERR,"Process_v5: Not enough data to process v5 record. Abort v5/v7 record processing");
-				fs->nffile->writeto = (void *)common_record;
+				fs->nffile->buff_ptr = (void *)common_record;
 				return;
 			}
 	
@@ -331,7 +332,7 @@ char		*string;
 			}
 
 			// map output record to memory buffer
-			common_record	= (common_record_t *)fs->nffile->writeto;
+			common_record	= (common_record_t *)fs->nffile->buff_ptr;
 			v5_block		= (v5_block_t *)common_record->data;
 
 			// sequence check
@@ -349,12 +350,12 @@ char		*string;
 				}
 				if (exporter->distance != exporter->last_count) {
 #define delta(a,b) ( (a)>(b) ? (a)-(b) : (b)-(a) )
-					fs->stat_record.sequence_failure++;
+					fs->nffile->stat_record->sequence_failure++;
 					/*
 					syslog(LOG_ERR,"Flow v%d sequence last:%llu now:%llu mismatch. Missing: dist:%lu flows",
 						version, exporter->last_sequence, exporter->sequence, exporter->distance);
-
 					*/
+
 				}
 			}
 			exporter->last_count  = count;
@@ -451,9 +452,13 @@ char		*string;
 	  			First	 				= ntohl(v5_record->First);
 	  			Last		 			= ntohl(v5_record->Last);
 
-
 #ifdef FIXTIMEBUG
-				// assume bug, some users reported - swap time stamps
+				/* 
+				 * Some users report, that they see flows, which have duration time of about 40days
+				 * which is almost the overflow value. Investigating this, it cannot be an overflow
+				 * and the difference is always 15160 or 15176 msec too little for a classical 
+				 * overflow. Therefore assume this must be an exporter bug
+				 */
 				if ( First > Last && ( (First - Last)  < 20000) ) {
 					uint32_t _t;
 					syslog(LOG_ERR,"Process_v5: Unexpected time swap: First 0x%llx smaller than boot time: 0x%llx", start_time, boot_time);
@@ -465,9 +470,10 @@ char		*string;
 				if ( First > Last ) {
 					/* First in msec, in case of msec overflow, between start and end */
 					start_time = boot_time - 0x100000000LL + (uint64_t)First;
-				} else
-					start_time = (uint64_t)First + boot_time;
-		
+				} else {
+					start_time = boot_time + (uint64_t)First;
+				}
+
 				/* end time in msecs */
 				end_time = (uint64_t)Last + boot_time;
 
@@ -495,9 +501,9 @@ char		*string;
 				v5_block->dOctets *= exporter->sampling_interval;
 				switch (common_record->prot) {
 					case IPPROTO_ICMP:
-						fs->stat_record.numflows_icmp++;
-						fs->stat_record.numpackets_icmp += v5_block->dPkts;
-						fs->stat_record.numbytes_icmp   += v5_block->dOctets;
+						fs->nffile->stat_record->numflows_icmp++;
+						fs->nffile->stat_record->numpackets_icmp += v5_block->dPkts;
+						fs->nffile->stat_record->numbytes_icmp   += v5_block->dOctets;
 						// fix odd CISCO behaviour for ICMP port/type in src port
 						if ( common_record->srcport != 0 ) {
 							s1 = (uint8_t *)&(common_record->srcport);
@@ -508,24 +514,48 @@ char		*string;
 						}
 						break;
 					case IPPROTO_TCP:
-						fs->stat_record.numflows_tcp++;
-						fs->stat_record.numpackets_tcp += v5_block->dPkts;
-						fs->stat_record.numbytes_tcp   += v5_block->dOctets;
+						fs->nffile->stat_record->numflows_tcp++;
+						fs->nffile->stat_record->numpackets_tcp += v5_block->dPkts;
+						fs->nffile->stat_record->numbytes_tcp   += v5_block->dOctets;
 						break;
 					case IPPROTO_UDP:
-						fs->stat_record.numflows_udp++;
-						fs->stat_record.numpackets_udp += v5_block->dPkts;
-						fs->stat_record.numbytes_udp   += v5_block->dOctets;
+						fs->nffile->stat_record->numflows_udp++;
+						fs->nffile->stat_record->numpackets_udp += v5_block->dPkts;
+						fs->nffile->stat_record->numbytes_udp   += v5_block->dOctets;
 						break;
 					default:
-						fs->stat_record.numflows_other++;
-						fs->stat_record.numpackets_other += v5_block->dPkts;
-						fs->stat_record.numbytes_other   += v5_block->dOctets;
+						fs->nffile->stat_record->numflows_other++;
+						fs->nffile->stat_record->numpackets_other += v5_block->dPkts;
+						fs->nffile->stat_record->numbytes_other   += v5_block->dOctets;
 				}
-				fs->stat_record.numflows++;
-				fs->stat_record.numpackets	+= v5_block->dPkts;
-				fs->stat_record.numbytes	+= v5_block->dOctets;
-	
+				fs->nffile->stat_record->numflows++;
+				fs->nffile->stat_record->numpackets	+= v5_block->dPkts;
+				fs->nffile->stat_record->numbytes	+= v5_block->dOctets;
+
+				if ( fs->xstat ) {
+					uint32_t bpp = v5_block->dPkts ? v5_block->dOctets/v5_block->dPkts : 0;
+					if ( bpp > MAX_BPP ) 
+						bpp = MAX_BPP;
+					if ( common_record->prot == IPPROTO_TCP ) {
+						fs->xstat->bpp_histogram->tcp.bpp[bpp]++;
+						fs->xstat->bpp_histogram->tcp.count++;
+
+						fs->xstat->port_histogram->src_tcp.port[common_record->srcport]++;
+						fs->xstat->port_histogram->dst_tcp.port[common_record->dstport]++;
+						fs->xstat->port_histogram->src_tcp.count++;
+						fs->xstat->port_histogram->dst_tcp.count++;
+					} else if ( common_record->prot == IPPROTO_UDP ) {
+						fs->xstat->bpp_histogram->udp.bpp[bpp]++;
+						fs->xstat->bpp_histogram->udp.count++;
+
+						fs->xstat->port_histogram->src_udp.port[common_record->srcport]++;
+						fs->xstat->port_histogram->dst_udp.port[common_record->dstport]++;
+						fs->xstat->port_histogram->src_udp.count++;
+						fs->xstat->port_histogram->dst_udp.count++;
+					}
+				}
+
+
 				if ( verbose ) {
 					master_record_t master_record;
 					ExpandRecord_v2((common_record_t *)common_record, &v5_extension_info, &master_record);
@@ -537,7 +567,8 @@ char		*string;
 				v5_record		= (netflow_v5_record_t *)((pointer_addr_t)v5_record + flow_record_length);
 
 				if ( ((pointer_addr_t)data_ptr - (pointer_addr_t)common_record) != v5_output_record_size ) {
-					printf("Panic size check: ptr diff: %llu, record size: %u\n", ((pointer_addr_t)data_ptr - (pointer_addr_t)common_record), v5_output_record_size ); 
+					printf("Panic size check: ptr diff: %llu, record size: %u\n", 
+						(unsigned long long)((pointer_addr_t)data_ptr - (pointer_addr_t)common_record), v5_output_record_size ); 
 					abort();
 				}
 				// advance to next output record
@@ -549,11 +580,11 @@ char		*string;
 				if ( bsize >= BUFFSIZE ) {
 					syslog(LOG_ERR,"### Software error ###: %s line %d", __FILE__, __LINE__);
 					syslog(LOG_ERR,"Process_v5: Output buffer overflow! Flush buffer and skip records.");
-					syslog(LOG_ERR,"Buffer size: size: %u, bsize: %u > %u", fs->nffile->block_header->size, bsize, BUFFSIZE);
+					syslog(LOG_ERR,"Buffer size: size: %u, bsize: %llu > %u", fs->nffile->block_header->size, (unsigned long long)bsize, BUFFSIZE);
 					// reset buffer
 					fs->nffile->block_header->size 		= 0;
 					fs->nffile->block_header->NumRecords = 0;
-					fs->nffile->writeto = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
+					fs->nffile->buff_ptr = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
 					return;
 				}
 
@@ -562,7 +593,7 @@ char		*string;
 		// update file record size ( -> output buffer size )
 		fs->nffile->block_header->NumRecords	+= count;
 		fs->nffile->block_header->size 		+= count * v5_output_record_size;
-		fs->nffile->writeto 					= (void *)common_record;
+		fs->nffile->buff_ptr 					= (void *)common_record;
 
 		// still to go for this many input bytes
 		size_left 	-= NETFLOW_V5_HEADER_LENGTH + count * flow_record_length;
@@ -617,7 +648,7 @@ uint32_t	i, id, t1, t2;
 		output_engine.first 	 = 0;
 	}
 	if ( cnt == 0 ) {
-		peer->writeto  = (void *)((pointer_addr_t)peer->send_buffer + NETFLOW_V5_HEADER_LENGTH);
+		peer->buff_ptr  = (void *)((pointer_addr_t)peer->send_buffer + NETFLOW_V5_HEADER_LENGTH);
 		v5_output_record = (netflow_v5_record_t *)((pointer_addr_t)v5_output_header + (pointer_addr_t)sizeof(netflow_v5_header_t));	
 		output_engine.sequence = output_engine.last_sequence + output_engine.last_count;
 		v5_output_header->flow_sequence	= htonl(output_engine.sequence);
@@ -677,7 +708,7 @@ uint32_t	i, id, t1, t2;
 	cnt++;
 
 	v5_output_header->count 	= htons(cnt);
-	peer->writeto = (void *)((pointer_addr_t)peer->writeto + NETFLOW_V5_RECORD_LENGTH);
+	peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + NETFLOW_V5_RECORD_LENGTH);
 	v5_output_record++;
 	if ( cnt == NETFLOW_V5_MAX_RECORDS ) {
 		peer->flush = 1;

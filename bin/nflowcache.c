@@ -803,10 +803,10 @@ struct aggregate_info_s *a;
 		} // while 
 	} 
 	printf("Has IP mask: %i %i\n", has_mask, FlowTable.has_masks);
-	printf("Mask 0: 0x%llx\n", FlowTable.IPmask[0]);
-	printf("Mask 1: 0x%llx\n", FlowTable.IPmask[1]);
-	printf("Mask 2: 0x%llx\n", FlowTable.IPmask[2]);
-	printf("Mask 3: 0x%llx\n", FlowTable.IPmask[3]);
+	printf("Mask 0: 0x%llx\n", (unsigned long long)FlowTable.IPmask[0]);
+	printf("Mask 1: 0x%llx\n", (unsigned long long)FlowTable.IPmask[1]);
+	printf("Mask 2: 0x%llx\n", (unsigned long long)FlowTable.IPmask[2]);
+	printf("Mask 3: 0x%llx\n", (unsigned long long)FlowTable.IPmask[3]);
 
 #endif
 

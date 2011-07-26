@@ -42,14 +42,35 @@
 #include <stddef.h>
 #endif
 
-#define IdentLen	128
-#define IdentNone	"none"
+#define IDENTLEN	128
+#define IDENTNONE	"none"
 
 #define NF_EOF		 	 0
 #define NF_ERROR		-1
 #define NF_CORRUPT		-2
 
 #define NF_DUMPFILE         "nfcapd.current"
+
+/* 
+ * output buffer max size, before writing data to the file 
+ * used to cache flows before writing to disk. size: tradeoff between
+ * size and time to flush to disk. Do not delay collector with long I/O
+ */
+#define WRITE_BUFFSIZE 1048576
+
+/*
+ * use this buffer size to allocate memory for the output buffer
+ * data other than flow records, such as histograms, may be larger than
+ * WRITE_BUFFSIZE and have potentially more time to flush to disk
+ */
+#define BUFFSIZE (5*WRITE_BUFFSIZE)
+
+/* if the output buffer reaches this limit, it gets flushed. This means,
+ * that 0.5MB input data may produce max 1MB data in output buffer, otherwise
+ * a buffer overflow may occur, and data does not get processed correctly.
+ * However, every Process_vx function checks buffer boundaries.
+ */
+
 /*
  * nfdump binary file layout
  * =========================
@@ -80,7 +101,7 @@ typedef struct file_header_s {
 										0x1 File is compressed with LZO1X-1 compression
 									 */
 	uint32_t	NumBlocks;			// number of data blocks in file
-	char		ident[IdentLen];	// string identifier for this file
+	char		ident[IDENTLEN];	// string identifier for this file
 } file_header_t;
 
 /* FLAG_EXTENDED_STATS bit = 0 
@@ -149,18 +170,38 @@ typedef struct data_block_header_s {
 } data_block_header_t;
 
 // compat nfdump 1.5.x v1 type
-#define DATA_BLOCK_TYPE_1	1
-#define DATA_BLOCK_TYPE_2	2
+#define DATA_BLOCK_TYPE_1		1
+#define DATA_BLOCK_TYPE_2		2
 
- /*
- * Generic fle handle for writing files
+/*
+ *
+ * Block type 3
+ * ============
+ * same block header as type 2. Used for data other than flow data - e.g. histograms. Important difference:
+ * included data records have type L_record_header_t headers in order to allow larger data records.
+ *
+ */ 
+
+#define Large_BLOCK_Type	3
+
+typedef struct L_record_header_s {
+ 	// record header
+ 	uint32_t	type;
+ 	uint32_t	size;
+} L_record_header_t;
+
+
+/*
+ * Generic file handle for reading/writing files
+ * if a file is read only writeto and block_header are NULL
  */
 typedef struct nffile_s {
 	file_header_t		*file_header;	// file header
-	data_block_header_t	*block_header;	// output buffer
-	void				*writeto;		// pointer into buffer for next availabe memory
+	data_block_header_t	*block_header;	// buffer
+	void				*buff_ptr;		// pointer into buffer for read/write blocks/records
+	stat_record_t 		*stat_record;	// flow stat record
 	int					_compress;		// data compressed flag
-	int					wfd;			// file id
+	int					fd;				// file descriptor
 } nffile_t;
 
 /* 
@@ -178,11 +219,14 @@ typedef struct nffile_s {
  * Type 0: reserved
  * Type 1: Common netflow record incl. all record extensions
  * Type 2: Extension map
- * Type 3: Exporter meta record */
+ * Type 3: xstat - port histogram record
+ * Type 4: xstat - bpp histogram record
+ */
 
 #define CommonRecordType	1
 #define ExtensionMapType	2
-#define ExporterType		3
+#define PortHistogramType	3
+#define BppHistogramType	4
 
  /* 
  * All records are 32bit aligned and layouted in a 64bit array. The numbers placed in () refer to the netflow v9 type id.
@@ -1349,35 +1393,40 @@ typedef struct common_record_v1_s {
 
 #endif
 
+// a few handy shortcuts
+#define FILE_IS_COMPRESSED(n) ((n)->file_header->flags & FLAG_COMPRESSED)
+#define HAS_EXTENDED_STAT(n) ((n)->file_header->flags & FLAG_EXTENDED_STATS)
+#define IP_ANONYMIZED(n) ((n)->file_header->flags & FLAG_ANONYMIZED)
+
 void SumStatRecords(stat_record_t *s1, stat_record_t *s2);
 
-int OpenFile(char *filename, stat_record_t **stat_record, char **err);
+nffile_t *OpenFile(char *filename, nffile_t *nffile);
 
-nffile_t *OpenNewFile(char *filename, nffile_t *nffile, int compressed, int anonymized, char **err);
+nffile_t *OpenNewFile(char *filename, nffile_t *nffile, int compressed, int anonymized, char *ident);
 
-int ChangeIdent(char *filename, char *Ident, char **err);
+nffile_t *AppendFile(char *filename);
+
+int ChangeIdent(char *filename, char *Ident);
 
 void PrintStat(stat_record_t *s);
 
 void QueryFile(char *filename);
 
-nffile_t *NewFile(void);
+stat_record_t *GetStatRecord(char *filename, stat_record_t *stat_record);
 
 nffile_t *DisposeFile(nffile_t *nffile);
 
-void CloseUpdateFile(nffile_t *nffile, stat_record_t *stat_record, char *ident, char **err );
+void CloseFile(nffile_t *nffile);
 
-int ReadBlock(int rfd, data_block_header_t *block_header, void *read_buff, char **err);
+int CloseUpdateFile(nffile_t *nffile, char *ident);
+
+int ReadBlock(nffile_t *nffile);
 
 int WriteBlock(nffile_t *nffile);
 
+int WriteExtraBlock(nffile_t *nffile, data_block_header_t *block_header);
+
 void UnCompressFile(char * filename);
-
-char *GetIdent(void);
-
-int IsCompressed(void);
-
-int IsAnonymized(void);
 
 void ExpandRecord_v1(common_record_t *input_record,master_record_t *output_record );
 

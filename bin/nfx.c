@@ -60,6 +60,7 @@
 
 #include "nf_common.h"
 #include "nffile.h"
+#include "util.h"
 #include "nfx.h"
 
 /* global vars */
@@ -561,11 +562,9 @@ int i, extension_size, max_elements;
 
 
 void DumpExMaps(char *filename) {
-int i, rfd, done;
-stat_record_t *stat_ptr;
-data_block_header_t in_block_header;					
-common_record_t *flow_record, *in_buff;
-char	*string;
+int i, done;
+nffile_t	*nffile;
+common_record_t *flow_record;
 uint32_t skipped_blocks;
 uint64_t total_bytes;
 
@@ -577,29 +576,25 @@ uint64_t total_bytes;
 	printf("\nDump all extension maps:\n");
 	printf("========================\n");
 
-	rfd = OpenFile(filename, &stat_ptr, &string);
-	if ( rfd < 0 ) {
-		fprintf(stderr, "%s\n", string);
+	nffile = OpenFile(filename, NULL);
+	if ( !nffile ) {
 		return;
 	}
-
-	// allocate buffer suitable for netflow version
-	in_buff = (common_record_t *) malloc(BUFFSIZE);
 
 	done = 0;
 	while ( !done ) {
 	int i, ret;
 
 		// get next data block from file
-		ret = ReadBlock(rfd, &in_block_header, (void *)in_buff, &string);
+		ret = ReadBlock(nffile);
 
 		switch (ret) {
 			case NF_CORRUPT:
 			case NF_ERROR:
 				if ( ret == NF_CORRUPT ) 
-					fprintf(stderr, "Corrupt data file '%s': '%s'\n",filename, string);
+					LogError("Corrupt data file '%s': '%s'\n",filename);
 				else 
-					fprintf(stderr, "Read error in file '%s': %s\n",filename, strerror(errno) );
+					LogError("Read error in file '%s': %s\n",filename, strerror(errno) );
 				done = 1;
 				continue;
 				break;
@@ -614,14 +609,15 @@ uint64_t total_bytes;
 				total_bytes += ret;
 		}
 
-		if ( in_block_header.id != DATA_BLOCK_TYPE_2 && in_block_header.id != DATA_BLOCK_TYPE_1 ) {
-			fprintf(stderr, "Can't process block type %u. Skip block.\n", in_block_header.id);
+		if ( nffile->block_header->id != DATA_BLOCK_TYPE_2 ) {
 			skipped_blocks++;
 			continue;
 		}
 
-		flow_record = in_buff;
-		for ( i=0; i < in_block_header.NumRecords; i++ ) {
+		// block type = 2
+
+		flow_record = (common_record_t *)nffile->buff_ptr;
+		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			if ( flow_record->type == ExtensionMapType ) {
 				extension_map_t *map = (extension_map_t *)flow_record;
 				VerifyExtensionMap(map);
@@ -633,8 +629,8 @@ uint64_t total_bytes;
 		}
 	}
 
-	close(rfd);
-	free(in_buff);
+	CloseFile(nffile);
+	DisposeFile(nffile);
 
 } // End of DumpExMaps
 

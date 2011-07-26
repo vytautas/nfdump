@@ -35,17 +35,24 @@
  *	
  */
 
-
-static inline FlowSource_t *GetFlowSource(struct sockaddr *sa) {
+static inline FlowSource_t *GetFlowSource(struct sockaddr_storage *ss) {
 FlowSource_t	*fs;
 void			*ptr;
 ip_addr_t		ip;
 char			as[100];
 
-	switch (sa->sa_family) {
+    union {
+        struct sockaddr_storage	*ss;
+        struct sockaddr			*sa;
+        struct sockaddr_in		*sa_in;
+        struct sockaddr_in6		*sa_in6;
+    } u;
+    u.ss = ss;
+
+	switch (ss->ss_family) {
 		case PF_INET: {
-#ifdef HAVE_SOCKADDR_SA_LEN
-			if (sa->sa_len != sizeof(struct sockaddr_in) ) {
+#ifdef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
+			if (ss->ss_len != sizeof(struct sockaddr_in) ) {
 				// malformed struct
 				syslog(LOG_ERR, "Malformed IPv4 socket struct in '%s', line '%d'", __FILE__, __LINE__ );
 				return NULL;
@@ -53,15 +60,14 @@ char			as[100];
 #endif
 			ip.v6[0] = 0;
 			ip.v6[1] = 0;
-			ip.v4 = ntohl(((struct sockaddr_in *)sa)->sin_addr.s_addr);
-			ptr 	   = &((struct sockaddr_in *)sa)->sin_addr;
+			ip.v4 = ntohl(u.sa_in->sin_addr.s_addr);
+			ptr 	   = &u.sa_in->sin_addr;
 			} break;
 		case PF_INET6: {
-			struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)sa;
-			uint64_t *ip_ptr = (uint64_t *)sa6->sin6_addr.s6_addr;
+			uint64_t *ip_ptr = (uint64_t *)u.sa_in6->sin6_addr.s6_addr;
 			
-#ifdef HAVE_SOCKADDR_SA_LEN
-			if (sa->sa_len != sizeof(struct sockaddr_in6) ) {
+#ifdef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
+			if (ss->ss_len != sizeof(struct sockaddr_in6) ) {
 				// malformed struct
 				syslog(LOG_ERR, "Malformed IPv6 socket struct in '%s', line '%d'", __FILE__, __LINE__ );
 				return NULL;
@@ -70,7 +76,7 @@ char			as[100];
 			// ptr = &((struct sockaddr_in6 *)sa)->sin6_addr;
 			ip.v6[0] = ntohll(ip_ptr[0]);
 			ip.v6[1] = ntohll(ip_ptr[1]);
-			ptr = &((struct sockaddr_in6 *)sa)->sin6_addr;
+			ptr = &u.sa_in6->sin6_addr;
 			} break;
 		default:
 			// keep compiler happy
@@ -78,12 +84,12 @@ char			as[100];
 			ip.v6[1] = 0;
 			ptr   = NULL;
 
-			syslog(LOG_ERR, "Unknown sa fanily: %d in '%s', line '%d'", sa->sa_family, __FILE__, __LINE__ );
+			syslog(LOG_ERR, "Unknown sa fanily: %d in '%s', line '%d'", ss->ss_family, __FILE__, __LINE__ );
 			return NULL;
 	}
 
 #ifdef DEVEL
-	inet_ntop(sa->sa_family, ptr, as, sizeof(as));
+	inet_ntop(ss->ss_family, ptr, as, sizeof(as));
 	as[99] = '\0';
 	printf("Flow Source IP: %s\n", as);
 #endif
@@ -97,14 +103,14 @@ char			as[100];
 		// and identifies the current source by IP
 		if ( fs->any_source ) {
 			fs->ip = ip;
-			fs->sa_family = sa->sa_family;
+			fs->sa_family = ss->ss_family;
 			return fs;
 		}
 		fs = fs->next;
 	}
 
 	if ( ptr ) {
-		inet_ntop (sa->sa_family, ptr, as, 100);
+		inet_ntop (ss->ss_family, ptr, as, 100);
 	} else 
 		strncpy(as, "<unknown>", 99);
 

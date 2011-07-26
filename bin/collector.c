@@ -67,6 +67,7 @@
 #include "util.h"
 #include "nf_common.h"
 #include "nffile.h"
+#include "nfxstat.h"
 #include "bookkeeper.h"
 #include "collector.h"
 #include "nfx.h"
@@ -104,6 +105,7 @@ int ok;
 	(*source)->any_source 	  = 0;
 	(*source)->exporter_data  = NULL;
 	(*source)->sampler  	  = NULL;
+	(*source)->xstat 		  = NULL;
 
 	memset((void *)&((*source)->std_sampling), 0, sizeof(sampler_t));
 
@@ -147,7 +149,7 @@ int ok;
 	}
 
 	// fill in ident
-	if ( strlen(ident) >= IdentLen ) {
+	if ( strlen(ident) >= IDENTLEN ) {
 		fprintf(stderr, "Source identifier too long: %s\n", ident);
 		return 0;
 	}
@@ -155,8 +157,8 @@ int ok;
 		fprintf(stderr,"Illegal characters in ident %s\n", ident);
 		exit(255);
 	}
-	strncpy((*source)->Ident, ident, IdentLen-1 );
-	(*source)->Ident[IdentLen-1] = '\0';
+	strncpy((*source)->Ident, ident, IDENTLEN-1 );
+	(*source)->Ident[IDENTLEN-1] = '\0';
 
 	if ( strlen(q) >= MAXPATHLEN ) {
 		fprintf(stderr,"Path too long: %s\n", q);
@@ -208,9 +210,10 @@ char s[MAXPATHLEN];
 	(*FlowSource)->bookkeeper = NULL;
 	(*FlowSource)->any_source = 1;
 	(*FlowSource)->exporter_data  = NULL;
+	(*FlowSource)->xstat 	  = NULL;
 
 	// fill in ident
-	if ( strlen(ident) >= IdentLen ) {
+	if ( strlen(ident) >= IDENTLEN ) {
 		fprintf(stderr, "Source identifier too long: %s\n", ident);
 		return 0;
 	}
@@ -218,8 +221,8 @@ char s[MAXPATHLEN];
 		fprintf(stderr,"Illegal characters in ident %s\n", ident);
 		return 0;
 	}
-	strncpy((*FlowSource)->Ident, ident, IdentLen-1 );
-	(*FlowSource)->Ident[IdentLen-1] = '\0';
+	strncpy((*FlowSource)->Ident, ident, IDENTLEN-1 );
+	(*FlowSource)->Ident[IDENTLEN-1] = '\0';
 
 	if ( strlen(path) >= MAXPATHLEN ) {
 		fprintf(stderr,"Path too long: %s\n",path);
@@ -297,7 +300,7 @@ int next_slot = fs->extension_map_list.next_free;
 	}
 
 	// sanity check for buffer size
-	bsize = (pointer_addr_t)fs->nffile->writeto - (pointer_addr_t)fs->nffile->block_header;
+	bsize = (pointer_addr_t)fs->nffile->buff_ptr - (pointer_addr_t)fs->nffile->block_header;
 	// at least space for the map size is required
 	if ( bsize >= (BUFFSIZE - map->size )  ) {
 		syslog(LOG_WARNING,"AddExtensionMap: Outputbuffer full. Flush buffer but have to skip records.");
@@ -310,8 +313,8 @@ int next_slot = fs->extension_map_list.next_free;
 		return 0;
 	}
 
-	memcpy(fs->nffile->writeto, (void *)map, map->size);
-	fs->nffile->writeto += map->size;
+	memcpy(fs->nffile->buff_ptr, (void *)map, map->size);
+	fs->nffile->buff_ptr += map->size;
 
 	fs->nffile->block_header->size += map->size;
 	fs->nffile->block_header->NumRecords++;
@@ -332,16 +335,16 @@ int i;
             return;
         }
 
-        memcpy(fs->nffile->writeto, (void *)map, map->size);
+        memcpy(fs->nffile->buff_ptr, (void *)map, map->size);
 
-        fs->nffile->writeto += map->size;
+        fs->nffile->buff_ptr += map->size;
         fs->nffile->block_header->NumRecords++;
         fs->nffile->block_header->size += map->size;
     }
 
 } // End of FlushExtensionMaps
 
-void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t sampler_id_length, 
+void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t sampler_id_length,
 	uint16_t offset_sampler_mode, uint16_t offset_sampler_interval) {
 option_offset_t	**t;
 
@@ -370,7 +373,7 @@ option_offset_t	**t;
 	SetFlag((*t)->flags, HAS_SAMPLER_DATA);
 	(*t)->id 				= id;
 	(*t)->offset_id			= offset_sampler_id;
-	(*t)->sampler_id_length	= sampler_id_length;
+	(*t)->sampler_id_length = sampler_id_length;
 	(*t)->offset_mode		= offset_sampler_mode;
 	(*t)->offset_interval	= offset_sampler_interval;
 	(*t)->offset_std_sampler_interval	= 0;

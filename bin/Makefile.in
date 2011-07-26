@@ -62,10 +62,10 @@ am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am__ft2nfdump_SOURCES_DIST = ft2nfdump.c nf_common.c nf_common.h \
 	version.h minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c \
-	nffile.h nfx.c nfx.h util.c util.h
+	nffile.h nfx.c nfx.h nfxstat.h nfxstat.c util.c util.h
 am__objects_1 = ft2nfdump-nf_common.$(OBJEXT)
 am__objects_2 = ft2nfdump-minilzo.$(OBJEXT) ft2nfdump-nffile.$(OBJEXT) \
-	ft2nfdump-nfx.$(OBJEXT)
+	ft2nfdump-nfx.$(OBJEXT) ft2nfdump-nfxstat.$(OBJEXT)
 am__objects_3 = ft2nfdump-util.$(OBJEXT)
 @FT2NFDUMP_TRUE@am_ft2nfdump_OBJECTS = ft2nfdump-ft2nfdump.$(OBJEXT) \
 @FT2NFDUMP_TRUE@	$(am__objects_1) $(am__objects_2) \
@@ -75,7 +75,8 @@ ft2nfdump_DEPENDENCIES =
 ft2nfdump_LINK = $(CCLD) $(ft2nfdump_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 am__objects_4 = util.$(OBJEXT)
-am__objects_5 = minilzo.$(OBJEXT) nffile.$(OBJEXT) nfx.$(OBJEXT)
+am__objects_5 = minilzo.$(OBJEXT) nffile.$(OBJEXT) nfx.$(OBJEXT) \
+	nfxstat.$(OBJEXT)
 am__objects_6 = flist.$(OBJEXT) fts_compat.$(OBJEXT)
 am__objects_7 = panonymizer.$(OBJEXT) rijndael.$(OBJEXT)
 am_nfanon_OBJECTS = nfanon.$(OBJEXT) $(am__objects_4) $(am__objects_5) \
@@ -85,51 +86,54 @@ nfanon_LDADD = $(LDADD)
 nfanon_DEPENDENCIES =
 am__nfcapd_SOURCES_DIST = nfcapd.c nf_common.c nf_common.h version.h \
 	util.c util.h minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c \
-	nffile.h nfx.c nfx.h flist.c flist.h fts_compat.c fts_compat.h \
-	nfstatfile.c nfstatfile.h launch.c launch.h nfnet.c nfnet.h \
-	collector.c collector.h netflow_v9.c netflow_v9.h \
-	netflow_v5_v7.c netflow_v5_v7.h bookkeeper.c bookkeeper.h \
-	expire.c expire.h pcap_reader.c pcap_reader.h
+	nffile.h nfx.c nfx.h nfxstat.h nfxstat.c flist.c flist.h \
+	fts_compat.c fts_compat.h nfstatfile.c nfstatfile.h launch.c \
+	launch.h nfnet.c nfnet.h collector.c collector.h netflow_v1.c \
+	netflow_v1.h netflow_v9.c netflow_v9.h netflow_v5_v7.c \
+	netflow_v5_v7.h bookkeeper.c bookkeeper.h expire.c expire.h \
+	pcap_reader.c pcap_reader.h
 am__objects_8 = nfcapd-nf_common.$(OBJEXT)
 am__objects_9 = nfcapd-util.$(OBJEXT)
 am__objects_10 = nfcapd-minilzo.$(OBJEXT) nfcapd-nffile.$(OBJEXT) \
-	nfcapd-nfx.$(OBJEXT)
+	nfcapd-nfx.$(OBJEXT) nfcapd-nfxstat.$(OBJEXT)
 am__objects_11 = nfcapd-flist.$(OBJEXT) nfcapd-fts_compat.$(OBJEXT)
 am__objects_12 = nfcapd-nfstatfile.$(OBJEXT)
 am__objects_13 = nfcapd-launch.$(OBJEXT)
 am__objects_14 = nfcapd-nfnet.$(OBJEXT)
 am__objects_15 = nfcapd-collector.$(OBJEXT)
-am__objects_16 = nfcapd-netflow_v9.$(OBJEXT)
-am__objects_17 = nfcapd-netflow_v5_v7.$(OBJEXT)
-am__objects_18 = nfcapd-bookkeeper.$(OBJEXT)
-am__objects_19 = nfcapd-expire.$(OBJEXT)
-@READPCAP_TRUE@am__objects_20 = nfcapd-pcap_reader.$(OBJEXT)
+am__objects_16 = nfcapd-netflow_v1.$(OBJEXT)
+am__objects_17 = nfcapd-netflow_v9.$(OBJEXT)
+am__objects_18 = nfcapd-netflow_v5_v7.$(OBJEXT)
+am__objects_19 = nfcapd-bookkeeper.$(OBJEXT)
+am__objects_20 = nfcapd-expire.$(OBJEXT)
+@READPCAP_TRUE@am__objects_21 = nfcapd-pcap_reader.$(OBJEXT)
 am_nfcapd_OBJECTS = nfcapd-nfcapd.$(OBJEXT) $(am__objects_8) \
 	$(am__objects_9) $(am__objects_10) $(am__objects_11) \
 	$(am__objects_12) $(am__objects_13) $(am__objects_14) \
 	$(am__objects_15) $(am__objects_16) $(am__objects_17) \
-	$(am__objects_18) $(am__objects_19) $(am__objects_20)
+	$(am__objects_18) $(am__objects_19) $(am__objects_20) \
+	$(am__objects_21)
 nfcapd_OBJECTS = $(am_nfcapd_OBJECTS)
 nfcapd_DEPENDENCIES =
 nfcapd_LINK = $(CCLD) $(nfcapd_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
-am__objects_21 = nf_common.$(OBJEXT)
-am__objects_22 = nflowcache.$(OBJEXT)
-am__objects_23 = grammar.$(OBJEXT) scanner.$(OBJEXT) nftree.$(OBJEXT) \
+am__objects_22 = nf_common.$(OBJEXT)
+am__objects_23 = nflowcache.$(OBJEXT)
+am__objects_24 = grammar.$(OBJEXT) scanner.$(OBJEXT) nftree.$(OBJEXT) \
 	ipconv.$(OBJEXT)
-am__objects_24 = nfprof.$(OBJEXT)
+am__objects_25 = nfprof.$(OBJEXT)
 am_nfdump_OBJECTS = nfdump.$(OBJEXT) nfstat.$(OBJEXT) \
-	nfexport.$(OBJEXT) $(am__objects_21) $(am__objects_22) \
+	nfexport.$(OBJEXT) $(am__objects_22) $(am__objects_23) \
 	$(am__objects_4) $(am__objects_5) $(am__objects_6) \
-	$(am__objects_23) $(am__objects_24)
+	$(am__objects_24) $(am__objects_25)
 nfdump_OBJECTS = $(am_nfdump_OBJECTS)
 nfdump_LDADD = $(LDADD)
 nfdump_DEPENDENCIES =
-am__objects_25 = bookkeeper.$(OBJEXT)
-am__objects_26 = expire.$(OBJEXT)
-am__objects_27 = nfstatfile.$(OBJEXT)
-am_nfexpire_OBJECTS = nfexpire.$(OBJEXT) $(am__objects_25) \
-	$(am__objects_26) $(am__objects_4) $(am__objects_27)
+am__objects_26 = bookkeeper.$(OBJEXT)
+am__objects_27 = expire.$(OBJEXT)
+am__objects_28 = nfstatfile.$(OBJEXT)
+am_nfexpire_OBJECTS = nfexpire.$(OBJEXT) $(am__objects_26) \
+	$(am__objects_27) $(am__objects_4) $(am__objects_28)
 nfexpire_OBJECTS = $(am_nfexpire_OBJECTS)
 nfexpire_DEPENDENCIES =
 am_nfgen_OBJECTS = nfgen.$(OBJEXT) $(am__objects_4) $(am__objects_5) \
@@ -138,8 +142,8 @@ nfgen_OBJECTS = $(am_nfgen_OBJECTS)
 nfgen_LDADD = $(LDADD)
 nfgen_DEPENDENCIES =
 am_nfprofile_OBJECTS = nfprofile.$(OBJEXT) profile.$(OBJEXT) \
-	$(am__objects_21) $(am__objects_4) $(am__objects_5) \
-	$(am__objects_6) $(am__objects_23) $(am__objects_27)
+	$(am__objects_22) $(am__objects_4) $(am__objects_5) \
+	$(am__objects_6) $(am__objects_24) $(am__objects_28)
 nfprofile_OBJECTS = $(am_nfprofile_OBJECTS)
 nfprofile_DEPENDENCIES =
 am_nfreader_OBJECTS = nfreader.$(OBJEXT) $(am__objects_4) \
@@ -147,32 +151,34 @@ am_nfreader_OBJECTS = nfreader.$(OBJEXT) $(am__objects_4) \
 nfreader_OBJECTS = $(am_nfreader_OBJECTS)
 nfreader_LDADD = $(LDADD)
 nfreader_DEPENDENCIES =
-am__objects_28 = nfnet.$(OBJEXT)
-am__objects_29 = collector.$(OBJEXT)
-am__objects_30 = netflow_v9.$(OBJEXT)
-am__objects_31 = netflow_v5_v7.$(OBJEXT)
-am_nfreplay_OBJECTS = nfreplay.$(OBJEXT) $(am__objects_21) \
+am__objects_29 = nfnet.$(OBJEXT)
+am__objects_30 = collector.$(OBJEXT)
+am__objects_31 = netflow_v1.$(OBJEXT)
+am__objects_32 = netflow_v9.$(OBJEXT)
+am__objects_33 = netflow_v5_v7.$(OBJEXT)
+am_nfreplay_OBJECTS = nfreplay.$(OBJEXT) $(am__objects_22) \
 	$(am__objects_4) $(am__objects_5) $(am__objects_6) \
-	$(am__objects_23) $(am__objects_24) $(am__objects_28) \
-	$(am__objects_29) $(am__objects_30) $(am__objects_31)
+	$(am__objects_24) $(am__objects_25) $(am__objects_29) \
+	$(am__objects_30) $(am__objects_31) $(am__objects_32) \
+	$(am__objects_33)
 nfreplay_OBJECTS = $(am_nfreplay_OBJECTS)
 nfreplay_LDADD = $(LDADD)
 nfreplay_DEPENDENCIES =
-am_nftest_OBJECTS = nftest.$(OBJEXT) $(am__objects_21) \
-	$(am__objects_23) $(am__objects_5)
+am_nftest_OBJECTS = nftest.$(OBJEXT) $(am__objects_22) \
+	$(am__objects_24) $(am__objects_5)
 nftest_OBJECTS = $(am_nftest_OBJECTS)
 nftest_LDADD = $(LDADD)
-am__objects_32 = nftrack-nf_common.$(OBJEXT)
-am__objects_33 = nftrack-util.$(OBJEXT)
-am__objects_34 = nftrack-minilzo.$(OBJEXT) nftrack-nffile.$(OBJEXT) \
-	nftrack-nfx.$(OBJEXT)
-am__objects_35 = nftrack-flist.$(OBJEXT) nftrack-fts_compat.$(OBJEXT)
-am__objects_36 = nftrack-grammar.$(OBJEXT) nftrack-scanner.$(OBJEXT) \
+am__objects_34 = nftrack-nf_common.$(OBJEXT)
+am__objects_35 = nftrack-util.$(OBJEXT)
+am__objects_36 = nftrack-minilzo.$(OBJEXT) nftrack-nffile.$(OBJEXT) \
+	nftrack-nfx.$(OBJEXT) nftrack-nfxstat.$(OBJEXT)
+am__objects_37 = nftrack-flist.$(OBJEXT) nftrack-fts_compat.$(OBJEXT)
+am__objects_38 = nftrack-grammar.$(OBJEXT) nftrack-scanner.$(OBJEXT) \
 	nftrack-nftree.$(OBJEXT) nftrack-ipconv.$(OBJEXT)
 am_nftrack_OBJECTS = nftrack-nftrack.$(OBJEXT) \
 	nftrack-nftrack_rrd.$(OBJEXT) nftrack-nftrack_stat.$(OBJEXT) \
-	$(am__objects_32) $(am__objects_33) $(am__objects_34) \
-	$(am__objects_35) $(am__objects_36)
+	$(am__objects_34) $(am__objects_35) $(am__objects_36) \
+	$(am__objects_37) $(am__objects_38)
 nftrack_OBJECTS = $(am_nftrack_OBJECTS)
 nftrack_DEPENDENCIES =
 nftrack_LINK = $(CCLD) $(nftrack_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
@@ -180,27 +186,27 @@ nftrack_LINK = $(CCLD) $(nftrack_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 am__sfcapd_SOURCES_DIST = sfcapd.c sflow.c sflow.h sflow_proto.h \
 	nf_common.c nf_common.h version.h util.c util.h minilzo.c \
 	minilzo.h lzoconf.h lzodefs.h nffile.c nffile.h nfx.c nfx.h \
-	flist.c flist.h fts_compat.c fts_compat.h nfstatfile.c \
-	nfstatfile.h launch.c launch.h nfnet.c nfnet.h collector.c \
-	collector.h bookkeeper.c bookkeeper.h expire.c expire.h \
-	pcap_reader.c pcap_reader.h
-am__objects_37 = sfcapd-nf_common.$(OBJEXT)
-am__objects_38 = sfcapd-util.$(OBJEXT)
-am__objects_39 = sfcapd-minilzo.$(OBJEXT) sfcapd-nffile.$(OBJEXT) \
-	sfcapd-nfx.$(OBJEXT)
-am__objects_40 = sfcapd-flist.$(OBJEXT) sfcapd-fts_compat.$(OBJEXT)
-am__objects_41 = sfcapd-nfstatfile.$(OBJEXT)
-am__objects_42 = sfcapd-launch.$(OBJEXT)
-am__objects_43 = sfcapd-nfnet.$(OBJEXT)
-am__objects_44 = sfcapd-collector.$(OBJEXT)
-am__objects_45 = sfcapd-bookkeeper.$(OBJEXT)
-am__objects_46 = sfcapd-expire.$(OBJEXT)
-@READPCAP_TRUE@am__objects_47 = sfcapd-pcap_reader.$(OBJEXT)
+	nfxstat.h nfxstat.c flist.c flist.h fts_compat.c fts_compat.h \
+	nfstatfile.c nfstatfile.h launch.c launch.h nfnet.c nfnet.h \
+	collector.c collector.h bookkeeper.c bookkeeper.h expire.c \
+	expire.h pcap_reader.c pcap_reader.h
+am__objects_39 = sfcapd-nf_common.$(OBJEXT)
+am__objects_40 = sfcapd-util.$(OBJEXT)
+am__objects_41 = sfcapd-minilzo.$(OBJEXT) sfcapd-nffile.$(OBJEXT) \
+	sfcapd-nfx.$(OBJEXT) sfcapd-nfxstat.$(OBJEXT)
+am__objects_42 = sfcapd-flist.$(OBJEXT) sfcapd-fts_compat.$(OBJEXT)
+am__objects_43 = sfcapd-nfstatfile.$(OBJEXT)
+am__objects_44 = sfcapd-launch.$(OBJEXT)
+am__objects_45 = sfcapd-nfnet.$(OBJEXT)
+am__objects_46 = sfcapd-collector.$(OBJEXT)
+am__objects_47 = sfcapd-bookkeeper.$(OBJEXT)
+am__objects_48 = sfcapd-expire.$(OBJEXT)
+@READPCAP_TRUE@am__objects_49 = sfcapd-pcap_reader.$(OBJEXT)
 am_sfcapd_OBJECTS = sfcapd-sfcapd.$(OBJEXT) sfcapd-sflow.$(OBJEXT) \
-	$(am__objects_37) $(am__objects_38) $(am__objects_39) \
-	$(am__objects_40) $(am__objects_41) $(am__objects_42) \
-	$(am__objects_43) $(am__objects_44) $(am__objects_45) \
-	$(am__objects_46) $(am__objects_47)
+	$(am__objects_39) $(am__objects_40) $(am__objects_41) \
+	$(am__objects_42) $(am__objects_43) $(am__objects_44) \
+	$(am__objects_45) $(am__objects_46) $(am__objects_47) \
+	$(am__objects_48) $(am__objects_49)
 sfcapd_OBJECTS = $(am_sfcapd_OBJECTS)
 sfcapd_DEPENDENCIES =
 sfcapd_LINK = $(CCLD) $(sfcapd_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
@@ -336,13 +342,14 @@ LDADD = $(DEPS_LIBS)
 AM_CFLAGS = -ggdb 
 common = nf_common.c nf_common.h version.h 
 util = util.c util.h
-filelzo = minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c nffile.h nfx.c nfx.h
+filelzo = minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c nffile.h nfx.c nfx.h nfxstat.h nfxstat.c
 nflist = flist.c flist.h fts_compat.c fts_compat.h
 filter = grammar.y scanner.l nftree.c nftree.h ipconv.c ipconv.h rbtree.h
 nfprof = nfprof.c nfprof.h
 nfnet = nfnet.c nfnet.h
 anon = panonymizer.c panonymizer.h rijndael.c rijndael.h
 collector = collector.c collector.h
+nfv1 = netflow_v1.c netflow_v1.h
 nfv9 = netflow_v9.c netflow_v9.h
 nfv5v7 = netflow_v5_v7.c netflow_v5_v7.h
 nfstatfile = nfstatfile.c nfstatfile.h
@@ -355,7 +362,7 @@ nfdump_SOURCES = nfdump.c nfdump.h nfstat.c nfstat.h nfexport.c nfexport.h \
 
 nfreplay_SOURCES = nfreplay.c \
 	$(common) $(util) $(filelzo) $(nflist) $(filter) $(nfprof) \
-	$(nfnet) $(collector) $(nfv9) $(nfv5v7)
+	$(nfnet) $(collector) $(nfv1) $(nfv9) $(nfv5v7)
 
 nfprofile_SOURCES = nfprofile.c profile.c profile.h \
 	$(common) $(util) $(filelzo) $(nflist) $(filter) $(nfstatfile)
@@ -367,7 +374,7 @@ nftrack_SOURCES = ../extra/nftrack/nftrack.c  ../extra/nftrack/nftrack_rrd.c  ..
 nftrack_CFLAGS = -I ../extra/nftrack
 nftrack_LDADD = -lrrd
 nfcapd_SOURCES = nfcapd.c $(common) $(util) $(filelzo) $(nflist) \
-	$(nfstatfile) $(launch) $(nfnet) $(collector) $(nfv9) \
+	$(nfstatfile) $(launch) $(nfnet) $(collector) $(nfv1) $(nfv9) \
 	$(nfv5v7) $(bookkeeper) $(expire) $(am__append_5)
 @READPCAP_TRUE@nfcapd_CFLAGS = -DPCAP
 @READPCAP_TRUE@nfcapd_LDADD = -lpcap
@@ -523,11 +530,13 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ft2nfdump-nf_common.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ft2nfdump-nffile.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ft2nfdump-nfx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ft2nfdump-nfxstat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ft2nfdump-util.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fts_compat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/grammar.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipconv.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/minilzo.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/netflow_v1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/netflow_v5_v7.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/netflow_v9.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nf_common.Po@am__quote@
@@ -539,6 +548,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-fts_compat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-launch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-minilzo.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-netflow_v1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-netflow_v5_v7.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-netflow_v9.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-nf_common.Po@am__quote@
@@ -547,6 +557,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-nfnet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-nfstatfile.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-nfx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-nfxstat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-pcap_reader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfcapd-util.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfdump.Po@am__quote@
@@ -575,10 +586,12 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nftrack-nftrack_stat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nftrack-nftree.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nftrack-nfx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nftrack-nfxstat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nftrack-scanner.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nftrack-util.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nftree.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nfxstat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/panonymizer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/profile.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rijndael.Po@am__quote@
@@ -595,6 +608,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sfcapd-nfnet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sfcapd-nfstatfile.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sfcapd-nfx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sfcapd-nfxstat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sfcapd-pcap_reader.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sfcapd-sfcapd.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sfcapd-sflow.Po@am__quote@
@@ -684,6 +698,20 @@ ft2nfdump-nfx.obj: nfx.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfx.c' object='ft2nfdump-nfx.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ft2nfdump_CFLAGS) $(CFLAGS) -c -o ft2nfdump-nfx.obj `if test -f 'nfx.c'; then $(CYGPATH_W) 'nfx.c'; else $(CYGPATH_W) '$(srcdir)/nfx.c'; fi`
+
+ft2nfdump-nfxstat.o: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ft2nfdump_CFLAGS) $(CFLAGS) -MT ft2nfdump-nfxstat.o -MD -MP -MF $(DEPDIR)/ft2nfdump-nfxstat.Tpo -c -o ft2nfdump-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/ft2nfdump-nfxstat.Tpo $(DEPDIR)/ft2nfdump-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='ft2nfdump-nfxstat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ft2nfdump_CFLAGS) $(CFLAGS) -c -o ft2nfdump-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+
+ft2nfdump-nfxstat.obj: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ft2nfdump_CFLAGS) $(CFLAGS) -MT ft2nfdump-nfxstat.obj -MD -MP -MF $(DEPDIR)/ft2nfdump-nfxstat.Tpo -c -o ft2nfdump-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/ft2nfdump-nfxstat.Tpo $(DEPDIR)/ft2nfdump-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='ft2nfdump-nfxstat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ft2nfdump_CFLAGS) $(CFLAGS) -c -o ft2nfdump-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
 
 ft2nfdump-util.o: util.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ft2nfdump_CFLAGS) $(CFLAGS) -MT ft2nfdump-util.o -MD -MP -MF $(DEPDIR)/ft2nfdump-util.Tpo -c -o ft2nfdump-util.o `test -f 'util.c' || echo '$(srcdir)/'`util.c
@@ -783,6 +811,20 @@ nfcapd-nfx.obj: nfx.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -c -o nfcapd-nfx.obj `if test -f 'nfx.c'; then $(CYGPATH_W) 'nfx.c'; else $(CYGPATH_W) '$(srcdir)/nfx.c'; fi`
 
+nfcapd-nfxstat.o: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -MT nfcapd-nfxstat.o -MD -MP -MF $(DEPDIR)/nfcapd-nfxstat.Tpo -c -o nfcapd-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nfcapd-nfxstat.Tpo $(DEPDIR)/nfcapd-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='nfcapd-nfxstat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -c -o nfcapd-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+
+nfcapd-nfxstat.obj: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -MT nfcapd-nfxstat.obj -MD -MP -MF $(DEPDIR)/nfcapd-nfxstat.Tpo -c -o nfcapd-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nfcapd-nfxstat.Tpo $(DEPDIR)/nfcapd-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='nfcapd-nfxstat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -c -o nfcapd-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
+
 nfcapd-flist.o: flist.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -MT nfcapd-flist.o -MD -MP -MF $(DEPDIR)/nfcapd-flist.Tpo -c -o nfcapd-flist.o `test -f 'flist.c' || echo '$(srcdir)/'`flist.c
 @am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nfcapd-flist.Tpo $(DEPDIR)/nfcapd-flist.Po
@@ -866,6 +908,20 @@ nfcapd-collector.obj: collector.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='collector.c' object='nfcapd-collector.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -c -o nfcapd-collector.obj `if test -f 'collector.c'; then $(CYGPATH_W) 'collector.c'; else $(CYGPATH_W) '$(srcdir)/collector.c'; fi`
+
+nfcapd-netflow_v1.o: netflow_v1.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -MT nfcapd-netflow_v1.o -MD -MP -MF $(DEPDIR)/nfcapd-netflow_v1.Tpo -c -o nfcapd-netflow_v1.o `test -f 'netflow_v1.c' || echo '$(srcdir)/'`netflow_v1.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nfcapd-netflow_v1.Tpo $(DEPDIR)/nfcapd-netflow_v1.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='netflow_v1.c' object='nfcapd-netflow_v1.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -c -o nfcapd-netflow_v1.o `test -f 'netflow_v1.c' || echo '$(srcdir)/'`netflow_v1.c
+
+nfcapd-netflow_v1.obj: netflow_v1.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -MT nfcapd-netflow_v1.obj -MD -MP -MF $(DEPDIR)/nfcapd-netflow_v1.Tpo -c -o nfcapd-netflow_v1.obj `if test -f 'netflow_v1.c'; then $(CYGPATH_W) 'netflow_v1.c'; else $(CYGPATH_W) '$(srcdir)/netflow_v1.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nfcapd-netflow_v1.Tpo $(DEPDIR)/nfcapd-netflow_v1.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='netflow_v1.c' object='nfcapd-netflow_v1.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -c -o nfcapd-netflow_v1.obj `if test -f 'netflow_v1.c'; then $(CYGPATH_W) 'netflow_v1.c'; else $(CYGPATH_W) '$(srcdir)/netflow_v1.c'; fi`
 
 nfcapd-netflow_v9.o: netflow_v9.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nfcapd_CFLAGS) $(CFLAGS) -MT nfcapd-netflow_v9.o -MD -MP -MF $(DEPDIR)/nfcapd-netflow_v9.Tpo -c -o nfcapd-netflow_v9.o `test -f 'netflow_v9.c' || echo '$(srcdir)/'`netflow_v9.c
@@ -1049,6 +1105,20 @@ nftrack-nfx.obj: nfx.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nftrack_CFLAGS) $(CFLAGS) -c -o nftrack-nfx.obj `if test -f 'nfx.c'; then $(CYGPATH_W) 'nfx.c'; else $(CYGPATH_W) '$(srcdir)/nfx.c'; fi`
 
+nftrack-nfxstat.o: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nftrack_CFLAGS) $(CFLAGS) -MT nftrack-nfxstat.o -MD -MP -MF $(DEPDIR)/nftrack-nfxstat.Tpo -c -o nftrack-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nftrack-nfxstat.Tpo $(DEPDIR)/nftrack-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='nftrack-nfxstat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nftrack_CFLAGS) $(CFLAGS) -c -o nftrack-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+
+nftrack-nfxstat.obj: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nftrack_CFLAGS) $(CFLAGS) -MT nftrack-nfxstat.obj -MD -MP -MF $(DEPDIR)/nftrack-nfxstat.Tpo -c -o nftrack-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nftrack-nfxstat.Tpo $(DEPDIR)/nftrack-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='nftrack-nfxstat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nftrack_CFLAGS) $(CFLAGS) -c -o nftrack-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
+
 nftrack-flist.o: flist.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(nftrack_CFLAGS) $(CFLAGS) -MT nftrack-flist.o -MD -MP -MF $(DEPDIR)/nftrack-flist.Tpo -c -o nftrack-flist.o `test -f 'flist.c' || echo '$(srcdir)/'`flist.c
 @am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/nftrack-flist.Tpo $(DEPDIR)/nftrack-flist.Po
@@ -1230,6 +1300,20 @@ sfcapd-nfx.obj: nfx.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfx.c' object='sfcapd-nfx.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(sfcapd_CFLAGS) $(CFLAGS) -c -o sfcapd-nfx.obj `if test -f 'nfx.c'; then $(CYGPATH_W) 'nfx.c'; else $(CYGPATH_W) '$(srcdir)/nfx.c'; fi`
+
+sfcapd-nfxstat.o: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(sfcapd_CFLAGS) $(CFLAGS) -MT sfcapd-nfxstat.o -MD -MP -MF $(DEPDIR)/sfcapd-nfxstat.Tpo -c -o sfcapd-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/sfcapd-nfxstat.Tpo $(DEPDIR)/sfcapd-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='sfcapd-nfxstat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(sfcapd_CFLAGS) $(CFLAGS) -c -o sfcapd-nfxstat.o `test -f 'nfxstat.c' || echo '$(srcdir)/'`nfxstat.c
+
+sfcapd-nfxstat.obj: nfxstat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(sfcapd_CFLAGS) $(CFLAGS) -MT sfcapd-nfxstat.obj -MD -MP -MF $(DEPDIR)/sfcapd-nfxstat.Tpo -c -o sfcapd-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/sfcapd-nfxstat.Tpo $(DEPDIR)/sfcapd-nfxstat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='nfxstat.c' object='sfcapd-nfxstat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(sfcapd_CFLAGS) $(CFLAGS) -c -o sfcapd-nfxstat.obj `if test -f 'nfxstat.c'; then $(CYGPATH_W) 'nfxstat.c'; else $(CYGPATH_W) '$(srcdir)/nfxstat.c'; fi`
 
 sfcapd-flist.o: flist.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(sfcapd_CFLAGS) $(CFLAGS) -MT sfcapd-flist.o -MD -MP -MF $(DEPDIR)/sfcapd-flist.Tpo -c -o sfcapd-flist.o `test -f 'flist.c' || echo '$(srcdir)/'`flist.c

@@ -70,13 +70,13 @@
 #include <stdint.h>
 #endif
 
-#include "version.h"
 #include "util.h"
 #include "nffile.h"
 #include "nfx.h"
 #include "nf_common.h"
 #include "nfnet.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "flist.h"
 #include "nfstatfile.h"
@@ -112,7 +112,7 @@ static FlowSource_t *FlowSource;
 
 static int done, launcher_alive, periodic_trigger, launcher_pid;
 
-static char const *rcsid 		  = "$Id: sfcapd.c 69 2010-09-09 07:17:43Z haag $";
+static const char *nfdump_version = VERSION;
 
 /* Local function Prototypes */
 static void usage(char *name);
@@ -121,13 +121,13 @@ static void kill_launcher(int pid);
 
 static void IntHandler(int signal);
 
-static inline FlowSource_t *GetFlowSource(struct sockaddr *sender);
+static inline FlowSource_t *GetFlowSource(struct sockaddr_storage *ss);
 
 static void daemonize(void);
 
 static void SetPriv(char *userid, char *groupid );
 
-static void run(packet_function_t receive_packet, int socket, send_peer_t peer, time_t twin, time_t t_begin, int report_seq, char *datadir, int use_subdirs, int compress);
+static void run(packet_function_t receive_packet, int socket, send_peer_t peer, time_t twin, time_t t_begin, int report_seq, char *datadir, int use_subdirs, int compress, int do_xstat);
 
 /* Functions */
 static void usage(char *name) {
@@ -143,6 +143,7 @@ static void usage(char *name) {
 					"-l logdir \tset the output directory. (no default) \n"
 					"-S subdir\tSub directory format. see nfcapd(1) for format\n"
 					"-I Ident\tset the ident string for stat file. (default 'none')\n"
+					"-H Add port histogram data to flow file.(default 'no')\n"
 					"-n Ident,IP,logdir\tAdd this flow source - multiple streams\n" 
 					"-P pidfile\tset the PID file\n"
 					"-R IP[/port]\tRepeat incoming packets to IP address/port\n"
@@ -253,8 +254,6 @@ int fd;
 			_exit(0);
 	}
 
-	chdir("/");
-
 	fd = open("/dev/null", O_RDONLY);
 	if (fd != 0) {
 		dup2(fd, 0);
@@ -332,7 +331,7 @@ int		err;
 #include "nffile_inline.c"
 #include "collector_inline.c"
 
-static void run(packet_function_t receive_packet, int socket, send_peer_t peer, time_t twin, time_t t_begin, int report_seq, char *datadir, int use_subdirs, int compress) {
+static void run(packet_function_t receive_packet, int socket, send_peer_t peer, time_t twin, time_t t_begin, int report_seq, char *datadir, int use_subdirs, int compress, int do_xstat) {
 FlowSource_t			*fs;
 struct sockaddr_storage sf_sender;
 socklen_t 	sf_sender_size = sizeof(sf_sender);
@@ -361,14 +360,18 @@ srecord_t	*commbuff;
 	while ( fs ) {
 
 		// prepare file
-		fs->nffile = OpenNewFile(fs->current, NULL, compress, 0, &string);
+		fs->nffile = OpenNewFile(fs->current, NULL, compress, 0, NULL);
 		if ( !fs->nffile ) {
 			syslog(LOG_ERR, "%s", string);
 			return;
 		}
+		if ( do_xstat ) {
+			fs->xstat = InitXStat(fs->nffile);
+			if ( !fs->xstat ) 
+				return;
+		}
 
 		// init stat vars
-		memset((void *)&fs->stat_record, 0, sizeof(stat_record_t));
 		fs->bad_packets		= 0;
 		fs->first_seen 		= (uint64_t)0xffffffffffffLL;
 		fs->last_seen 		= 0;
@@ -429,7 +432,6 @@ srecord_t	*commbuff;
 			char subfilename[64];
 			struct  tm *now;
 			char	*subdir;
-sleep(2);
 			alarm(0);
 			now = localtime(&t_start);
 
@@ -460,20 +462,18 @@ sleep(2);
 			while ( fs ) {
 				char nfcapd_filename[MAXPATHLEN];
 				char error[255];
+				nffile_t *nffile = fs->nffile;
 
 				if ( verbose ) {
 					// Dump to stdout
-					format_file_block_header(fs->nffile->block_header, &string, 0);
+					format_file_block_header(nffile->block_header, &string, 0);
 					printf("%s\n", string);
 				}
 
-				if ( fs->nffile->block_header->NumRecords ) {
+				if ( nffile->block_header->NumRecords ) {
 					// flush current buffer to disc
-					if ( WriteBlock(fs->nffile) <= 0 )
+					if ( WriteBlock(nffile) <= 0 )
 						syslog(LOG_ERR, "Ident: %s, failed to write output buffer to disk: '%s'" , fs->Ident, strerror(errno));
-					else 
-						// update successful written blocks
-						fs->nffile->file_header->NumBlocks++;
 				} // else - no new records in current block
 
 	
@@ -482,18 +482,22 @@ sleep(2);
 				nfcapd_filename[MAXPATHLEN-1] = '\0';
 	
 				// update stat record
-				fs->stat_record.first_seen 	= fs->first_seen/1000;
-				fs->stat_record.msec_first	= fs->first_seen - fs->stat_record.first_seen*1000;
-				fs->stat_record.last_seen 	= fs->last_seen/1000;
-				fs->stat_record.msec_last	= fs->last_seen - fs->stat_record.last_seen*1000;
+				nffile->stat_record->first_seen 	= fs->first_seen/1000;
+				nffile->stat_record->msec_first	= fs->first_seen - nffile->stat_record->first_seen*1000;
+				nffile->stat_record->last_seen 	= fs->last_seen/1000;
+				nffile->stat_record->msec_last	= fs->last_seen - nffile->stat_record->last_seen*1000;
 	
-				// Write Stat record and close file
-				CloseUpdateFile(fs->nffile, &fs->stat_record, fs->Ident, &string );
-				if ( string != NULL ) {
-					// closing the file failed. maybe disk full ??
-					syslog(LOG_ERR, "Ident: %s, %s", fs->Ident, string);
+				if ( fs->xstat ) {
+					if ( WriteExtraBlock(nffile, fs->xstat->block_header ) <= 0 ) 
+						syslog(LOG_ERR, "Ident: %s, failed to write xstat buffer to disk: '%s'" , fs->Ident, strerror(errno));
+
+					ResetPortHistogram(fs->xstat->port_histogram);
+					ResetBppHistogram(fs->xstat->bpp_histogram);
 				}
-	
+
+				// Write Stat record and close file
+				CloseUpdateFile(nffile, fs->Ident);
+
 				if ( subdir && !SetupSubDir(fs->datadir, subdir, error, 255) ) {
 					// in this case the flows get lost! - the rename will fail
 					// but this should not happen anyway, unless i/o problems, inode problems etc.
@@ -523,30 +527,28 @@ sleep(2);
 
 				// log stats
 				syslog(LOG_INFO,"Ident: '%s' Flows: %llu, Packets: %llu, Bytes: %llu, Sequence Errors: %u, Bad Packets: %u", 
-					fs->Ident, (unsigned long long)fs->stat_record.numflows, (unsigned long long)fs->stat_record.numpackets, 
-					(unsigned long long)fs->stat_record.numbytes, fs->stat_record.sequence_failure, fs->bad_packets);
+					fs->Ident, (unsigned long long)nffile->stat_record->numflows, (unsigned long long)nffile->stat_record->numpackets, 
+					(unsigned long long)nffile->stat_record->numbytes, nffile->stat_record->sequence_failure, fs->bad_packets);
 
 				// reset stat record
-				memset((void *)&fs->stat_record, 0, sizeof(stat_record_t));
 				fs->bad_packets = 0;
 				fs->first_seen 	= 0xffffffffffffLL;
 				fs->last_seen 	= 0;
 
-				// Dump all extension maps to the buffer
-				FlushExtensionMaps(fs);
-
 				if ( !done ) {
-					fs->nffile = OpenNewFile(fs->current, fs->nffile, compress, 0, &string );
-					if ( fs->nffile ) {
-						syslog(LOG_ERR, "Fatal: ident: %s, %s", fs->Ident, string);
-						syslog(LOG_ERR, "Suicide due to fatal error!");
+					fs->nffile = OpenNewFile(fs->current, fs->nffile, compress, 0, NULL);
+					if ( !fs->nffile ) {
+						LogError("killed due to fatal error: ident: %s", fs->Ident);
 						break;
+					}
+					/* XXX needs fixing */
+					if ( fs->xstat ) {
+						SetFlag(fs->nffile->file_header->flags, FLAG_EXTENDED_STATS);
 					}
 				}
 
 				// Dump all extension maps to the buffer
 				FlushExtensionMaps(fs);
-
 
 				// next flow source
 				fs = fs->next;
@@ -615,7 +617,7 @@ sleep(2);
 
 		// get flow source record for current packet, identified by sender IP address
 
-		fs = GetFlowSource((struct sockaddr*)&sf_sender);
+		fs = GetFlowSource(&sf_sender);
 		if ( fs == NULL ) {
 			syslog(LOG_WARNING, "Skip UDP packet. Ignored packets so far %u packets", ignored_packets);
 			ignored_packets++;
@@ -642,7 +644,7 @@ sleep(2);
 			// reset output buffer - data may be lost, as we don not know, where it happen
 			fs->nffile->block_header->size 		 = 0;
 			fs->nffile->block_header->NumRecords = 0;
-			fs->nffile->writeto = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
+			fs->nffile->buff_ptr = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
 			syslog(LOG_ERR, "### Software bug ### Ident: %s, output buffer overflow: expect memory inconsitency", fs->Ident);
 		}
 	}
@@ -673,7 +675,7 @@ FlowSource_t *fs;
 struct sigaction act;
 int		family, bufflen;
 time_t 	twin, t_start;
-int		sock, err, synctime, do_daemonize, expire, report_sequence;
+int		sock, err, synctime, do_daemonize, expire, report_sequence, do_xstat;
 int		subdir_index, compress;
 int	c;
 
@@ -696,6 +698,7 @@ int	c;
 	subdir_index	= 0;
 	expire			= 0;
 	compress		= 0;
+	do_xstat		= 0;
 	memset((void *)&peer, 0, sizeof(send_peer_t));
 	peer.family		= AF_UNSPEC;
 	Ident			= "none";
@@ -721,6 +724,9 @@ int	c;
 			case 'E':
 				verbose = 1;
 				break;
+			case 'H':
+				do_xstat = 1;
+				break;
 			case 'f': {
 #ifdef PCAP
 				struct stat	fstat;
@@ -735,7 +741,7 @@ int	c;
 #endif
 				} break;
 			case 'V':
-				printf("%s: Version: %s %s\n%s\n",argv[0], nfdump_version, nfdump_date, rcsid);
+				printf("%s: Version: %s\n",argv[0], nfdump_version);
 				exit(0);
 				break;
 			case 'D':
@@ -1054,7 +1060,7 @@ int	c;
 	sigaction(SIGCHLD, &act, NULL);
 
 	syslog(LOG_INFO, "Startup.");
-	run(receive_packet, sock, peer, twin, t_start, report_sequence, datadir, subdir_index, compress);
+	run(receive_packet, sock, peer, twin, t_start, report_sequence, datadir, subdir_index, compress, do_xstat);
 	close(sock);
 	kill_launcher(launcher_pid);
 

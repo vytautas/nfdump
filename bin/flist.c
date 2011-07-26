@@ -71,10 +71,6 @@
 #include "util.h"
 #include "flist.h"
 
-/* Global vars */
-extern char *CurrentIdent;
-
-
 /*
  * Select a single file
  * --------------------
@@ -888,8 +884,6 @@ char	path[MAXPATHLEN];
 } // End of Getsource_dirs
 
 void SetupInputFileSequence(char *multiple_dirs, char *single_file, char *multiple_files) {
-char *error;
-int	fd;
 
 	twin_first  = 0;
 	twin_last   = 0xffffffff;
@@ -909,22 +903,19 @@ int	fd;
 
 		// get time window spanning all the files 
 		if ( file_list.num_strings ) {
-			stat_record_t *stat_ptr;
+			stat_record_t stat_ptr;
 
-			fd = OpenFile(file_list.list[0], &stat_ptr, &error);	// read the stat record
-			if ( error != NULL ) {
-				fprintf(stderr, "%s\n", error);
+			// read the stat record
+			if ( !GetStatRecord(file_list.list[0], &stat_ptr) ) {
 				exit(250);
 			}
-			close(fd);
-			twin_first = stat_ptr->first_seen;
-			fd = OpenFile(file_list.list[file_list.num_strings-1], &stat_ptr, &error);	// read the stat record of last file
-			if ( error != NULL ) {
-				fprintf(stderr, "%s\n", error);
+			twin_first = stat_ptr.first_seen;
+
+			// read the stat record of last file
+			if ( !GetStatRecord(file_list.list[file_list.num_strings-1], &stat_ptr) ) {
 				exit(250);
 			}
-			close(fd);
-			twin_last  = stat_ptr->last_seen;
+			twin_last  = stat_ptr.last_seen;
 		}
 
 	} else if ( single_file ) {
@@ -980,65 +971,49 @@ char *GetCurrentFilename(void) {
 	return current_file;
 } // End of GetCurrentFilename
 
-int GetNextFile(int current, time_t twin_start, time_t twin_end, stat_record_t **stat_record) {
-stat_record_t *stat_ptr;
-char *error;
-int fd;
+nffile_t *GetNextFile(nffile_t *nffile, time_t twin_start, time_t twin_end) {
 static int cnt;
-
-	// is it first time init ?
-	if ( current < 0 ) {
-		cnt  = 0;
-	}
 
 	// close current file before open the next one
 	// stdin ( current = 0 ) is not closed
-	if ( current > 0 ) {
-		close(current);
+	if ( nffile ) {
+		CloseFile(nffile);
 		current_file = NULL;
+	} else {
+		// is it first time init ?
+		cnt  = 0;
 	}
 
 	// no or no more files available
 	if ( file_list.num_strings == cnt ) {
-		if ( stat_record )
-			*stat_record = NULL;
 		current_file = NULL;
 		return EMPTY_LIST;
 	}
 	
-/*
-	while ( cnt < file_list.num_strings ) {
-		printf("Process: '%s'\n", file_list.list[cnt++]);
-	}
-*/
 
 	while ( cnt < file_list.num_strings ) {
-		fd = OpenFile(file_list.list[cnt], &stat_ptr, &error);	// Open the file
+#ifdef DEVEL
+		printf("Process: '%s'\n", file_list.list[cnt] ? file_list.list[cnt] : "<stdin>");
+#endif
+		nffile = OpenFile(file_list.list[cnt], nffile);	// Open the file
+		if ( !nffile ) {
+			return NULL;
+		}
 		current_file = file_list.list[cnt];
 		cnt++;
 
 		// stdin
-		if ( fd == STDIN_FILENO ) {
-			if ( stat_record )
-				*stat_record = NULL;
-			CurrentIdent = "none";
+		if ( nffile->fd == STDIN_FILENO ) {
 			current_file = NULL;
-			return fd;
+			return nffile;
 		}
 
-		if ( fd > 0 && CheckTimeWindow(twin_start, twin_end, stat_ptr) ) {
+		if ( CheckTimeWindow(twin_start, twin_end, nffile->stat_record) ) {
 			// printf("Return file: %s\n", string);
-			if ( stat_record ) 
-				*stat_record = stat_ptr;
-			return fd;
+			return nffile;
 		} 
-		close(fd);
-		if ( error != NULL ) 
-			fprintf(stderr, "%s\n", error);
+		CloseFile(nffile);
 	}
-
-	if ( stat_record )
-		*stat_record = NULL;
 
 	current_file = NULL;
 	return EMPTY_LIST;

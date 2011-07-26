@@ -81,7 +81,6 @@
 #include <stdint.h>
 #endif
 
-#include "version.h"
 #include "util.h"
 #include "nffile.h"
 #include "nfx.h"
@@ -90,7 +89,9 @@
 #include "flist.h"
 #include "nfstatfile.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
+#include "netflow_v1.h"
 #include "netflow_v5_v7.h"
 #include "netflow_v9.h"
 
@@ -132,7 +133,8 @@ static FlowSource_t *FlowSource;
 
 static int done, launcher_alive, periodic_trigger, launcher_pid;
 
-static char const *rcsid 		  = "$Id: nfcapd.c 51 2010-01-29 09:01:54Z haag $";
+static const char *nfdump_version = VERSION;
+
 
 /* Local function Prototypes */
 static void usage(char *name);
@@ -141,14 +143,14 @@ static void kill_launcher(int pid);
 
 static void IntHandler(int signal);
 
-static inline FlowSource_t *GetFlowSource(struct sockaddr *sender);
+static inline FlowSource_t *GetFlowSource(struct sockaddr_storage *ss);
 
 static void daemonize(void);
 
 static void SetPriv(char *userid, char *groupid );
 
 static void run(packet_function_t receive_packet, int socket, send_peer_t peer, 
-	time_t twin, time_t t_begin, int report_seq, int use_subdirs, int compress);
+	time_t twin, time_t t_begin, int report_seq, int use_subdirs, int compress, int do_xstat);
 
 /* Functions */
 static void usage(char *name) {
@@ -164,6 +166,7 @@ static void usage(char *name) {
 					"-l basdir \tset the output directory. (no default) \n"
 					"-S subdir\tSub directory format. see nfcapd(1) for format\n"
 					"-I Ident\tset the ident string for stat file. (default 'none')\n"
+					"-H Add port histogram data to flow file.(default 'no')\n"
 					"-n Ident,IP,logdir\tAdd this flow source - multiple streams\n" 
 					"-P pidfile\tset the PID file\n"
 					"-R IP[/port]\tRepeat incoming packets to IP address/port\n"
@@ -356,7 +359,7 @@ int		err;
 #include "collector_inline.c"
 
 static void run(packet_function_t receive_packet, int socket, send_peer_t peer, 
-	time_t twin, time_t t_begin, int report_seq, int use_subdirs, int compress) {
+	time_t twin, time_t t_begin, int report_seq, int use_subdirs, int compress, int do_xstat) {
 common_flow_header_t	*nf_header;
 FlowSource_t			*fs;
 struct sockaddr_storage nf_sender;
@@ -371,12 +374,12 @@ int 		err;
 char 		*string;
 srecord_t	*commbuff;
 
-	if ( !Init_v5_v7_input() || !Init_v9() )
+	if ( !Init_v1() || !Init_v5_v7_input() || !Init_v9() )
 		return;
 
 	in_buff  = malloc(NETWORK_INPUT_BUFF_SIZE);
 	if ( !in_buff ) {
-		syslog(LOG_ERR, "malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		LogError("malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
 
@@ -389,14 +392,16 @@ srecord_t	*commbuff;
 	while ( fs ) {
 
 		// prepare file
-		fs->nffile = OpenNewFile(fs->current, NULL, compress, 0, &string);
+		fs->nffile = OpenNewFile(fs->current, NULL, compress, 0, NULL);
 		if ( !fs->nffile ) {
-			syslog(LOG_ERR, "%s", string);
 			return;
 		}
-
-		// init stat vars
-		memset((void *)&fs->stat_record, 0, sizeof(stat_record_t));
+		if ( do_xstat ) {
+			fs->xstat = InitXStat(fs->nffile);
+			if ( !fs->xstat ) 
+				return;
+		}
+		// init vars
 		fs->bad_packets		= 0;
 		fs->first_seen 		= (uint64_t)0xffffffffffffLL;
 		fs->last_seen 		= 0;
@@ -489,20 +494,18 @@ srecord_t	*commbuff;
 			while ( fs ) {
 				char nfcapd_filename[MAXPATHLEN];
 				char error[255];
+				nffile_t *nffile = fs->nffile;
 
 				if ( verbose ) {
 					// Dump to stdout
-					format_file_block_header(fs->nffile->block_header, &string, 0);
+					format_file_block_header(nffile->block_header, &string, 0);
 					printf("%s\n", string);
 				}
 
-				if ( fs->nffile->block_header->NumRecords ) {
+				if ( nffile->block_header->NumRecords ) {
 					// flush current buffer to disc
-					if ( WriteBlock(fs->nffile) <= 0 )
+					if ( WriteBlock(nffile) <= 0 )
 						syslog(LOG_ERR, "Ident: %s, failed to write output buffer to disk: '%s'" , fs->Ident, strerror(errno));
-					else 
-						// update successful written blocks
-						fs->nffile->file_header->NumBlocks++;
 				} // else - no new records in current block
 
 	
@@ -511,17 +514,21 @@ srecord_t	*commbuff;
 				nfcapd_filename[MAXPATHLEN-1] = '\0';
 	
 				// update stat record
-				fs->stat_record.first_seen 	= fs->first_seen/1000;
-				fs->stat_record.msec_first	= fs->first_seen - fs->stat_record.first_seen*1000;
-				fs->stat_record.last_seen 	= fs->last_seen/1000;
-				fs->stat_record.msec_last	= fs->last_seen - fs->stat_record.last_seen*1000;
-	
-				// Write Stat record and close file
-				CloseUpdateFile(fs->nffile, &fs->stat_record, fs->Ident, &string );
-				if ( string != NULL ) {
-					// closing the file failed. maybe disk full ??
-					syslog(LOG_ERR, "Ident: %s, %s", fs->Ident, string);
+				nffile->stat_record->first_seen 	= fs->first_seen/1000;
+				nffile->stat_record->msec_first	= fs->first_seen - nffile->stat_record->first_seen*1000;
+				nffile->stat_record->last_seen 	= fs->last_seen/1000;
+				nffile->stat_record->msec_last	= fs->last_seen - nffile->stat_record->last_seen*1000;
+
+				if ( fs->xstat ) {
+					if ( WriteExtraBlock(nffile, fs->xstat->block_header ) <= 0 ) 
+						syslog(LOG_ERR, "Ident: %s, failed to write xstat buffer to disk: '%s'" , fs->Ident, strerror(errno));
+
+					ResetPortHistogram(fs->xstat->port_histogram);
+					ResetBppHistogram(fs->xstat->bpp_histogram);
 				}
+
+				// Close file
+				CloseUpdateFile(nffile, fs->Ident);
 
 				if ( subdir && !SetupSubDir(fs->datadir, subdir, error, 255) ) {
 					// in this case the flows get lost! - the rename will fail
@@ -552,21 +559,23 @@ srecord_t	*commbuff;
 
 				// log stats
 				syslog(LOG_INFO,"Ident: '%s' Flows: %llu, Packets: %llu, Bytes: %llu, Sequence Errors: %u, Bad Packets: %u", 
-					fs->Ident, (unsigned long long)fs->stat_record.numflows, (unsigned long long)fs->stat_record.numpackets, 
-					(unsigned long long)fs->stat_record.numbytes, fs->stat_record.sequence_failure, fs->bad_packets);
+					fs->Ident, (unsigned long long)nffile->stat_record->numflows, (unsigned long long)nffile->stat_record->numpackets, 
+					(unsigned long long)nffile->stat_record->numbytes, nffile->stat_record->sequence_failure, fs->bad_packets);
 
-				// reset stat record
-				memset((void *)&fs->stat_record, 0, sizeof(stat_record_t));
+				// reset stats
 				fs->bad_packets = 0;
 				fs->first_seen 	= 0xffffffffffffLL;
 				fs->last_seen 	= 0;
 
 				if ( !done ) {
-					fs->nffile = OpenNewFile(fs->current, fs->nffile, compress, 0, &string);
-					if ( !fs->nffile ) {
-						syslog(LOG_ERR, "Fatal: ident: %s, %s", fs->Ident, string);
-						syslog(LOG_ERR, "Suicide due to fatal error!");
+					nffile = OpenNewFile(fs->current, nffile, compress, 0, NULL);
+					if ( !nffile ) {
+						LogError("killed due to fatal error: ident: %s", fs->Ident);
 						break;
+					}
+					/* XXX needs fixing */
+					if ( fs->xstat ) {
+						SetFlag(nffile->file_header->flags, FLAG_EXTENDED_STATS);
 					}
 				}
 
@@ -640,7 +649,7 @@ srecord_t	*commbuff;
 			continue;
 
 		// get flow source record for current packet, identified by sender IP address
-		fs = GetFlowSource((struct sockaddr*)&nf_sender);
+		fs = GetFlowSource(&nf_sender);
 		if ( fs == NULL ) {
 			syslog(LOG_WARNING, "Skip UDP packet. Ignored packets so far %u packets", ignored_packets);
 			ignored_packets++;
@@ -657,6 +666,9 @@ srecord_t	*commbuff;
 		/* Process data - have a look at the common header */
 		version = ntohs(nf_header->version);
 		switch (version) {
+			case 1: 
+				Process_v1(in_buff, cnt, fs);
+				break;
 			case 5: // fall through
 			case 7: 
 				Process_v5_v7(in_buff, cnt, fs);
@@ -664,12 +676,15 @@ srecord_t	*commbuff;
 			case 9: 
 				Process_v9(in_buff, cnt, fs);
 				break;
+			case 10: 
+				syslog(LOG_ERR,"Ident: %s, IPFIX not yet supported", fs->Ident);
+				break;
 			case 255:
 				// blast test header
 				if ( verbose ) {
 					uint16_t count = ntohs(nf_header->count);
 					if ( blast_cnt != count ) {
-							// fprintf(stderr, "Missmatch blast check: Expected %u got %u\n", blast_cnt, count);
+							// LogError("Missmatch blast check: Expected %u got %u\n", blast_cnt, count);
 						blast_cnt = count;
 						blast_failures++;
 					} else {
@@ -683,7 +698,7 @@ srecord_t	*commbuff;
 				}
 			default:
 				// data error, while reading data from socket
-				syslog(LOG_ERR,"Ident: %s, Error reading netflow header: Unexpected netflow version %i", fs->Ident, nf_header->version);
+				syslog(LOG_ERR,"Ident: %s, Error reading netflow header: Unexpected netflow version %i", fs->Ident, version);
 				fs->bad_packets++;
 				continue;
 
@@ -699,7 +714,7 @@ srecord_t	*commbuff;
 			// reset output buffer - data may be lost, as we don not know, where it happen
 			fs->nffile->block_header->size 		 = 0;
 			fs->nffile->block_header->NumRecords = 0;
-			fs->nffile->writeto = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
+			fs->nffile->buff_ptr = (void *)((pointer_addr_t)fs->nffile->block_header + sizeof(data_block_header_t) );
 			syslog(LOG_ERR, "### Software bug ### Ident: %s, output buffer overflow: expect memory inconsitency", fs->Ident);
 		}
 	}
@@ -730,7 +745,7 @@ FlowSource_t *fs;
 struct sigaction act;
 int		family, bufflen;
 time_t 	twin, t_start;
-int		sock, err, synctime, do_daemonize, expire, report_sequence;
+int		sock, err, synctime, do_daemonize, expire, report_sequence, do_xstat;
 int		subdir_index, sampling_rate, compress;
 int		c;
 
@@ -754,6 +769,7 @@ int		c;
 	expire			= 0;
 	sampling_rate	= 1;
 	compress		= 0;
+	do_xstat		= 0;
 	memset((void *)&peer, 0, sizeof(send_peer_t));
 	peer.family		= AF_UNSPEC;
 	Ident			= "none";
@@ -761,7 +777,7 @@ int		c;
 	extension_tags	= DefaultExtensions;
 	pcap_file		= NULL;
 
-	while ((c = getopt(argc, argv, "46ef:whEVI:DB:b:j:l:n:p:P:R:S:s:T:t:x:ru:g:z")) != EOF) {
+	while ((c = getopt(argc, argv, "46ef:whEVI:DB:b:j:l:n:p:P:R:S:s:T:t:x:Xru:g:z")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -794,8 +810,11 @@ int		c;
 				Setv6Mode(1);
 				break;
 			case 'V':
-				printf("%s: Version: %s %s\n%s\n",argv[0], nfdump_version, nfdump_date, rcsid);
+				printf("%s: Version: %s\n",argv[0], nfdump_version);
 				exit(0);
+				break;
+			case 'X':
+				do_xstat = 1;
 				break;
 			case 'D':
 				do_daemonize = 1;
@@ -1050,7 +1069,9 @@ int		c;
 			exit(255);
 		}
 		snprintf(pidstr,31,"%lu\n", (unsigned long)pid);
-		write(pidf, pidstr, strlen(pidstr));
+		if ( write(pidf, pidstr, strlen(pidstr)) <= 0 ) {
+			syslog(LOG_ERR, "Error write pid file: '%s' %s", pidfile, strerror(errno));
+		}
 		close(pidf);
 	}
 
@@ -1131,7 +1152,7 @@ int		c;
 	sigaction(SIGCHLD, &act, NULL);
 
 	syslog(LOG_INFO, "Startup.");
-	run(receive_packet, sock, peer, twin, t_start, report_sequence, subdir_index, compress);
+	run(receive_packet, sock, peer, twin, t_start, report_sequence, subdir_index, compress, do_xstat);
 	close(sock);
 	kill_launcher(launcher_pid);
 

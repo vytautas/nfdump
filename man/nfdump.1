@@ -326,7 +326,7 @@ limit. \fIpacket_num\fR accepts positive or negative numbers followed by 'K'
 Limit statistics output to those records above or below the \fIbyte_num\fR 
 limit. \fIbyte_num\fR accepts positive or negative numbers followed by 'K'
 , 'M' or 'G' 10E3, 10E6 or 10E9 bytes respectively. \fINote:\fR These limits only
-apply to the statistics and aggregated outputs generated with \-a \-s or \-S.
+apply to the statistics and aggregated outputs generated with \-a \-s.
 To filter netflow records by packets and bytes, use the filter syntax 'packets'
 and 'bytes' described below.
 .TP 3
@@ -506,6 +506,10 @@ and format specifier as described below
 .br
 \fB%dp\fR     Destination Port
 .br
+\fB%sn\fR     Source Network, mask applied
+.br
+\fB%dn\fR     Destination Network, mask applied
+.br
 \fB%nh\fR     Next\-hop IP Address
 .br
 \fB%nhb\fR    BGP Next\-hop IP Address
@@ -581,6 +585,8 @@ and format specifier as described below
 \fB%mpls9\fR  MPLS label 9
 .br
 \fB%mpls10\fR MPLS label 10
+.br
+\fB%mpls\fR   MPLS labels 1-10
 .br
 \fB%eng\fR    Engine type/ID
 .br
@@ -945,32 +951,32 @@ To filter for flows with specific bytes per packet.
 .B =, ==, >, <,  EQ, LT, GT .
 If \fIcomp\fR is omitted, '=' is assumed.
 .SH "EXAMPLES"
-.B nfdump \-r /and/dir/nfcapd.200407110845 \-c 100 'proto tcp and ( src ip 172.16.17.18 or dst ip 172.16.17.19 )'
+.B nfdump \-r /and/dir/nfcapd.201107110845 \-c 100 'proto tcp and ( src ip 172.16.17.18 or dst ip 172.16.17.19 )'
 Dumps the first 100 netflow records which match the given filter:
 .P
-.B nfdump \-R /and/dir/nfcapd.200407110845:nfcapd.200407110945 'host 192.168.1.2'
+.B nfdump \-r /and/dir/nfcapd.201107110845 \-B
+Map matching flows as bin-directional single flow.
+.P
+.B nfdump \-R /and/dir/nfcapd.201107110845:nfcapd.200407110945 'host 192.168.1.2'
 Dumps all netflow records of host 192.168.1.2 from July 11 08:45 \- 09:45
 .P
-.B nfdump \-M /to/and/dir1:dir2 \-R nfcapd.200407110845:nfcapd.200407110945  \-S \-n 20
+.B nfdump \-M /to/and/dir1:dir2 \-R nfcapd.200407110845:nfcapd.200407110945  \-s record \-n 20
 Generates the Top 20 statistics from 08:45 to 09:45 from 3 sources
 .P
-.B nfdump \-r /and/dir/nfcapd.200407110845 \-S \-n 20 \-o extended
+.B nfdump \-r /and/dir/nfcapd.201107110845 \-s record \-n 20 \-o extended
 Generates the Top 20 statistics, extended output format
 .P
-.B nfdump \-r /and/dir/nfcapd.200407110845 \-S \-n 20 'in if 5 and bps > 10k'
+.B nfdump \-r /and/dir/nfcapd.201107110845 \-s record \-n 20 'in if 5 and bps > 10k'
 Generates the Top 20 statistics from flows comming from interface 5
 .P
-.B nfdump \-r /and/dir/nfcapd.200407110845 'inet6 and proto tcp and ( src port > 1024 and dst port 80 )
+.B nfdump \-r /and/dir/nfcapd.201107110845 'inet6 and proto tcp and ( src port > 1024 and dst port 80 )
 Dumps all port 80 IPv6 connections to any web server.
 .SH NOTES
 Generating the statistics for data files of a few hundred MB is no problem. However
 be careful if you want to create statistics of several GB of data. This may consume a lot
-of memory and can take a while. Also, anonymizing IP addresses is time consuming and uses
-a lot of CPU power, which reduces the number of flows per second. Therefore anonymizing
-takes place only, when flow records are printed or written to files. Any internal flow
-processing takes place using the original IP addresses.
+of memory and can take a while. Flow anonymization has moved into nfanon.
 .SH "SEE ALSO"
-nfcapd(1), nfprofile(1), nfreplay(1)
+nfcapd(1), nfanon(1), nfprofile(1), nfreplay(1)
 .SH BUGS
 There is still the famous last bug. Please report them \- all the last bugs \- back to me.
 

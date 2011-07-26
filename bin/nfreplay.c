@@ -58,7 +58,6 @@
 #include <stdint.h>
 #endif
 
-#include "version.h"
 #include "nffile.h"
 #include "nfx.h"
 #include "nf_common.h"
@@ -67,6 +66,7 @@
 #include "nfdump.h"
 #include "nfnet.h"
 #include "bookkeeper.h"
+#include "nfxstat.h"
 #include "collector.h"
 #include "netflow_v5_v7.h"
 #include "netflow_v9.h"
@@ -94,7 +94,7 @@ FilterEngine_data_t	*Engine;
 int 		verbose;
 
 /* Local Variables */
-static char const *rcsid 		  = "$Id: nfreplay.c 39 2009-11-25 08:11:15Z haag $";
+static const char *nfdump_version = VERSION;
 
 send_peer_t peer;
 
@@ -136,11 +136,11 @@ static void usage(char *name) {
 } /* usage */
 
 static int FlushBuffer(int confirm) {
-size_t len = (pointer_addr_t)peer.writeto - (pointer_addr_t)peer.send_buffer;
+size_t len = (pointer_addr_t)peer.buff_ptr - (pointer_addr_t)peer.send_buffer;
 static unsigned long cnt = 1;
 
 	peer.flush = 0;
-	peer.writeto = peer.send_buffer;
+	peer.buff_ptr = peer.send_buffer;
 	if ( confirm ) {
 		FPURGE(stdin);
 		printf("Press any key to send next UDP packet [%lu] ", cnt++);
@@ -202,35 +202,32 @@ double 					fps;
 
 static void send_data(char *rfile, time_t twin_start, 
 			time_t twin_end, uint32_t count, unsigned int delay, int confirm, int netflow_version) {
-data_block_header_t in_block_header;					
-master_record_t		master_record;
-common_record_t		*flow_record, *in_buff;
-stat_record_t 		*stat_record;
-int 		i, rfd, done, ret, again;
-uint32_t	numflows, cnt;
-char 		*string;
+master_record_t	master_record;
+common_record_t	*flow_record;
+nffile_t		*nffile;
+int 			i, done, ret, again;
+uint32_t		numflows, cnt;
 
 #ifdef COMPAT15
 int	v1_map_done = 0;
 #endif
 	
-	rfd = GetNextFile(0, twin_start, twin_end, &stat_record);
-	if ( rfd < 0 ) {
-		if ( rfd == FILE_ERROR )
-			fprintf(stderr, "Can't open file for reading: %s\n", strerror(errno));
+	// Get the first file handle
+	nffile = GetNextFile(NULL, twin_start, twin_end);
+	if ( !nffile ) {
+		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
 
-	// prepare read and send buffer
-	in_buff = (common_record_t *) malloc(BUFFSIZE);
 	peer.send_buffer   	= malloc(UDP_PACKET_SIZE);
 	peer.flush			= 0;
-	if ( !in_buff || !peer.send_buffer ) {
-		perror("Memory allocation error");
-		close(rfd);
+	if ( !peer.send_buffer ) {
+		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		CloseFile(nffile);
+		DisposeFile(nffile);
 		return;
 	}
-	peer.writeto  = peer.send_buffer;
+	peer.buff_ptr = peer.send_buffer;
 	peer.endp  	  = (void *)((pointer_addr_t)peer.send_buffer + UDP_PACKET_SIZE - 1);
 
 	if ( netflow_version == 5 ) 
@@ -248,33 +245,34 @@ int	v1_map_done = 0;
 	cnt = 0;
 	while ( !done ) {
 		// get next data block from file
-		ret = ReadBlock(rfd, &in_block_header, (void *)in_buff, &string);
+		ret = ReadBlock(nffile);
 
 		switch (ret) {
 			case NF_CORRUPT:
 			case NF_ERROR:
 				if ( ret == NF_CORRUPT ) 
-					fprintf(stderr, "Skip corrupt data file '%s': '%s'\n",GetCurrentFilename(), string);
+					LogError("Skip corrupt data file '%s'\n",GetCurrentFilename());
 				else 
-					fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
+					LogError("Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
 				// fall through - get next file in chain
-			case NF_EOF:
-				rfd = GetNextFile(rfd, twin_start, twin_end, NULL);
-				if ( rfd < 0 ) {
-					if ( rfd == NF_ERROR )
-						fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
-
-					// rfd == EMPTY_LIST
+			case NF_EOF: {
+				nffile_t *next = GetNextFile(nffile, twin_start, twin_end);
+				if ( next == EMPTY_LIST ) {
 					done = 1;
-				} // else continue with next file
+				}
+				if ( next == NULL ) {
+					done = 1;
+					LogError("Unexpected end of file list\n");
+				}
+				// else continue with next file
 				continue;
 	
-				break; // not really needed
+				} break; // not really needed
 		}
 
 #ifdef COMPAT15
-		if ( in_block_header.id == DATA_BLOCK_TYPE_1 ) {
-			common_record_v1_t *v1_record = (common_record_v1_t *)in_buff;
+		if ( nffile->block_header->id == DATA_BLOCK_TYPE_1 ) {
+			common_record_v1_t *v1_record = (common_record_v1_t *)nffile->buff_ptr;
 			// create an extension map for v1 blocks
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
@@ -294,31 +292,31 @@ int	v1_map_done = 0;
 			}
 
 			// convert the records to v2
-			for ( i=0; i < in_block_header.NumRecords; i++ ) {
+			for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 				common_record_t *v2_record = (common_record_t *)v1_record;
 				Convert_v1_to_v2((void *)v1_record);
 				// now we have a v2 record -> use size of v2_record->size
 				v1_record = (common_record_v1_t *)((pointer_addr_t)v1_record + v2_record->size);
 			}
-			in_block_header.id = DATA_BLOCK_TYPE_2;
+			nffile->block_header->id = DATA_BLOCK_TYPE_2;
 		}
 #endif
 
-		if ( in_block_header.id != DATA_BLOCK_TYPE_2 ) {
-			fprintf(stderr, "Can't process block type %u. Skip block.\n", in_block_header.id);
+		if ( nffile->block_header->id != DATA_BLOCK_TYPE_2 ) {
+			LogError("Can't process block type %u. Skip block.\n", nffile->block_header->id);
 			continue;
 		}
 
 		// cnt is the number of blocks, which survived the filter
 		// and added to the output buffer
-		flow_record = in_buff;
+		flow_record = nffile->buff_ptr;
 
-		for ( i=0; i < in_block_header.NumRecords; i++ ) {
+		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			int match;
 
 			if ( flow_record->type == CommonRecordType ) {
 				if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
-					fprintf(stderr, "Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
+					LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
 					flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 					continue;
 				} 
@@ -353,7 +351,8 @@ int	v1_map_done = 0;
 	
 					if ( ret < 0 ) {
 						perror("Error sending data");
-						close(rfd);
+						CloseFile(nffile);
+						DisposeFile(nffile);
 						return;
 					}
 		
@@ -381,7 +380,7 @@ int	v1_map_done = 0;
 				} // else map already known and flushed
 
 			} else {
-				fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
+				LogError("Skip unknown record type %i\n", flow_record->type);
 			}
 
 			// Advance pointer by number of bytes for netflow record
@@ -400,8 +399,10 @@ int	v1_map_done = 0;
 
 	} // if cnt 
 
-	if ( rfd ) 
-		close(rfd);
+	if (nffile) {
+		CloseFile(nffile);
+		DisposeFile(nffile);
+	}
 
 	close(peer.sockfd);
 
@@ -443,7 +444,7 @@ time_t t_start, t_end;
 				blast = 1;
 				break;
 			case 'V':
-				printf("%s: Version: %s %s\n%s\n",argv[0], nfdump_version, nfdump_date, rcsid);
+				printf("%s: Version: %s\n",argv[0], nfdump_version);
 				exit(0);
 				break;
 			case 'Y':
@@ -459,12 +460,12 @@ time_t t_start, t_end;
 					peer.hostname = strdup(optarg);
 					peer.mcast	  = 1;
 				} else {
-        			fprintf(stderr, "ERROR, -H(-i) and -j are mutually exclusive!!\n");
+        			LogError("ERROR, -H(-i) and -j are mutually exclusive!!\n");
         			exit(255);
 				}
 				break;
 			case 'K':
-				fprintf(stderr, "*** Anonymization moved! Use nfanon to anonymize flows first!\n");
+				LogError("*** Anonymization moved! Use nfanon to anonymize flows first!\n");
 				exit(255);
 				break;
 			case 'L':
@@ -480,7 +481,7 @@ time_t t_start, t_end;
 			case 'v':
 				netflow_version = atoi(optarg);
 				if ( netflow_version != 5 && netflow_version != 9 ) {
-					fprintf(stderr, "Invalid netflow version: %s. Accept only 5 or 9!\n", optarg);
+					LogError("Invalid netflow version: %s. Accept only 5 or 9!\n", optarg);
 					exit(255);
 				}
 				break;
@@ -503,7 +504,7 @@ time_t t_start, t_end;
 				if ( peer.family == AF_UNSPEC )
 					peer.family = AF_INET;
 				else {
-					fprintf(stderr, "ERROR, Accepts only one protocol IPv4 or IPv6!\n");
+					LogError("ERROR, Accepts only one protocol IPv4 or IPv6!\n");
 					exit(255);
 				}
 				break;
@@ -511,7 +512,7 @@ time_t t_start, t_end;
 				if ( peer.family == AF_UNSPEC )
 					peer.family = AF_INET6;
 				else {
-					fprintf(stderr, "ERROR, Accepts only one protocol IPv4 or IPv6!\n");
+					LogError("ERROR, Accepts only one protocol IPv4 or IPv6!\n");
 					exit(255);
 				}
 				break;

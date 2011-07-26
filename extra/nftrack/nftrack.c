@@ -57,8 +57,6 @@
 #include <stdint.h>
 #endif
 
-
-#include "version.h"
 #include "nf_common.h"
 #include "nffile.h"
 #include "flist.h"
@@ -84,6 +82,9 @@ int 		byte_mode, packet_mode;
 uint32_t	byte_limit, packet_limit;	// needed for linking purpose only
 
 extension_map_list_t extension_map_list;
+
+/* Local Variables */
+static const char *nfdump_version = VERSION;
 
 /* Function Prototypes */
 static void usage(char *name);
@@ -112,35 +113,22 @@ static void usage(char *name) {
 } /* usage */
 
 static data_row *process(char *filter) {
-data_block_header_t block_header;					
 master_record_t		master_record;
-common_record_t		*flow_record, *in_buff;
-int i, rfd, done, ret;
-uint32_t	buffer_size;
+common_record_t		*flow_record;
+nffile_t	*nffile;
+int i, done, ret;
 data_row * 	port_table;
-char *string;
-uint64_t total_bytes;
+uint64_t total_bytes; 
 
-	rfd = GetNextFile(0, 0, 0, NULL);
-	if ( rfd < 0 ) {
-		if ( errno ) 
-			perror("Can't open file for reading");
-		return NULL;
-	}
-
-	// prepare read and send buffer
-	buffer_size = BUFFSIZE;
-	in_buff = (common_record_t *) malloc(buffer_size);
-	if ( !in_buff ) {
-		perror("Memory allocation error");
-		close(rfd);
+	nffile = GetNextFile(NULL, 0, 0);
+	if ( !nffile ) {
+		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return NULL;
 	}
 
 	port_table    = (data_row *)calloc(65536, sizeof(data_row));
     if ( !port_table) {
-        perror("Memory allocation error");
-        close(rfd);
+		LogError("malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
         return NULL;
     }
 
@@ -154,48 +142,52 @@ uint64_t total_bytes;
 	while ( !done ) {
 
 		// get next data block from file
-		ret = ReadBlock(rfd, &block_header, (void *)in_buff, &string);
+		ret = ReadBlock(nffile);
 
         switch (ret) {
             case NF_CORRUPT:
             case NF_ERROR:
                 if ( ret == NF_CORRUPT ) 
-                    fprintf(stderr, "Skip corrupt data file '%s': '%s'\n",GetCurrentFilename(), string);
+                    fprintf(stderr, "Skip corrupt data file '%s'\n",GetCurrentFilename());
                 else 
                     fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
                 // fall through - get next file in chain
-            case NF_EOF:
-                rfd = GetNextFile(rfd, 0, 0, NULL);
-                if ( rfd < 0 ) {
-                    if ( rfd == NF_ERROR )
-                        fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
+            case NF_EOF: {
+				nffile_t *next = GetNextFile(nffile, 0, 0);
+				if ( next == EMPTY_LIST ) {
+					done = 1;
+				}
+				if ( next == NULL ) {
+					done = 1;
+					LogError("Unexpected end of file list\n");
+				}
+				// else continue with next file
+				continue;
 
-                    // rfd == EMPTY_LIST
-                    done = 1;
-                } // else continue with next file
-                continue;
-    
-                break; // not really needed
+                } break; // not really needed
             default:
                 // successfully read block
                 total_bytes += ret;
         }
 
-		if ( block_header.id != DATA_BLOCK_TYPE_2 ) {
-			fprintf(stderr, "Can't process block type %u\n", block_header.id);
+		if ( nffile->block_header->id == Large_BLOCK_Type ) {
+			// skip
 			continue;
 		}
 
-		flow_record = in_buff;
+		if ( nffile->block_header->id != DATA_BLOCK_TYPE_2 ) {
+			fprintf(stderr, "Can't process block type %u\n", nffile->block_header->id);
+			continue;
+		}
 
-		for ( i=0; i < block_header.NumRecords; i++ ) {
-			char        string[1024];
+		flow_record = nffile->buff_ptr;
+
+		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			int			ret;
 
             if ( flow_record->type == CommonRecordType ) {
                 if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
-                    snprintf(string, 1024, "Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
-                    string[1023] = '\0';
+                    LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
                 } else {
                     ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], &master_record);
             
@@ -236,6 +228,9 @@ uint64_t total_bytes;
 			flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 		}
 	} // while
+
+	CloseFile(nffile);
+	DisposeFile(nffile);
 
 	return port_table;
 
@@ -316,6 +311,10 @@ struct tm * t1;
 				break;
 			case 'S':
 				AvStat = 1;
+				break;
+			case 'V':
+				printf("%s: Version: %s\n",argv[0], nfdump_version);
+				exit(0);
 				break;
 			default:
 				usage(argv[0]);

@@ -468,7 +468,7 @@ int	evaluate, invert;
 				break;
 			case CMP_IDENT:
 				value = args->filter[index].value;
-				evaluate = strncmp(CurrentIdent, args->IdentList[value], IdentLen) == 0 ;
+				evaluate = strncmp(CurrentIdent, args->IdentList[value], IDENTLEN) == 0 ;
 				break;
 			case CMP_FLAGS:
 				if ( invert )

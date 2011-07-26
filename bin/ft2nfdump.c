@@ -62,7 +62,6 @@
 #endif
 
 #include "ftlib.h"
-#include "version.h"
 #include "nf_common.h"
 #include "nffile.h"
 #include "nfx.h"
@@ -74,7 +73,7 @@
 /* Global consts */
 extern extension_descriptor_t extension_descriptor[];
 
-static char const *vers_id = "$Id: ft2nfdump.c 69 2010-09-09 07:17:43Z haag $";
+const char *nfdump_version = VERSION;
 
 typedef struct v5_block_s {
 	uint32_t	srcaddr;
@@ -335,7 +334,7 @@ char   *ftfile;
 				break;
 		
 			case 'V':
-				printf("%s: Version: %s %s\n%s\n",argv[0], nfdump_version, nfdump_date, vers_id);
+				printf("%s: Version: %s\n",argv[0], nfdump_version);
 				exit(0);
 				break;
 
