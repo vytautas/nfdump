@@ -1,3 +1,8 @@
+2011-12-xx 1.6.5
+- Fix 64bit bug when using byte/packet limits
+- for v5 and sampling use 64bit counters to prevent overflow for large sampled flows.
+- Fixed Ident printig bug
+
 2011-07-11 1.6.4
 - some code restructuring - prepare for IPFIX module
 - Add netflow v1 module. Some routers still use that

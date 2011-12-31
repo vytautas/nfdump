@@ -86,7 +86,10 @@ if [ -f tmp/pidfile ]; then
 fi
 
 ./nfdump -r tmp/nfcapd.* -q -o raw  > test3.out
-diff -u test3.out nfdump.test.out
+# nfdump 1.6.5 always uses 64 bits. therefore we have a predictable diff
+# so diff the diff
+diff test3.out nfdump.test.out > test3.diff || true
+diff test3.diff nfdump.test.diff
 
 rm test.flows tmp/nfcapd.* test3.out
 rmdir tmp

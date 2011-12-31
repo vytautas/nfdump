@@ -75,19 +75,14 @@ extern uint32_t overwrite_sampling;
 
 /* module limited globals */
 static extension_info_t v5_extension_info;		// common for all v5 records
-static uint16_t v5_output_record_size;
+static uint16_t v5_output_record_size, v5_output_record_base_size;
 
 // All required extension to save full v5 records
 static uint16_t v5_full_mapp[] = { EX_IO_SNMP_2, EX_AS_2, EX_MULIPLE, EX_NEXT_HOP_v4, EX_ROUTER_IP_v4, EX_ROUTER_ID, 0 };
 
-typedef struct v5_block_s {
-	uint32_t	srcaddr;
-	uint32_t	dstaddr;
-	uint32_t	dPkts;
-	uint32_t	dOctets;
-	uint32_t	data[1];	// link to next record
-} v5_block_t;
-#define V5_BLOCK_DATA_SIZE (sizeof(v5_block_t) - sizeof(uint32_t))
+// to simplify, assume blocks with 64 bit counters to check for enough buffer space
+// regardless if 32 or 64 bit packet/byte counters
+#define V5_BLOCK_DATA_SIZE (sizeof(ipv4_block_t) - sizeof(uint32_t) + 2 * sizeof(uint64_t))
 
 typedef struct exporter_v5_s {
 	// link chain
@@ -146,8 +141,8 @@ uint16_t	map_size;
 		i++;
 	}
 	// extension_size contains the sum of all optional extensions
-	// caculate the record size 
-	v5_output_record_size = COMMON_RECORD_DATA_SIZE + V5_BLOCK_DATA_SIZE + extension_size;	
+	// caculate the record size without counters!
+	v5_output_record_base_size = COMMON_RECORD_DATA_SIZE + 8 + extension_size;	// + 8 for 2 x IPv4 addr
 
 	// now the full extension map size
 	map_size 	+= sizeof(extension_map_t);
@@ -292,7 +287,19 @@ char		*string;
 			syslog(LOG_ERR,"Process_v5: Exporter NULL: Abort v5/v7 record processing");
 			return;
 		}
-		flags = exporter->sampling_interval == 1 ? 0 : FLAG_SAMPLED;
+
+		// calculate record size depending on counter size
+		// sigh .. one day I should fix switch to 64bits
+		if ( exporter->sampling_interval == 1 ) {
+			flags = 0;
+			v5_output_record_size = v5_output_record_base_size + 8; // 2 x  4 byte counters
+		} else {
+			flags = 0;
+			SetFlag(flags, FLAG_SAMPLED);
+			SetFlag(flags, FLAG_PKG_64);
+			SetFlag(flags, FLAG_BYTES_64);
+			v5_output_record_size = v5_output_record_base_size + 16; // 2 x  8 byte counters
+		}
 
 		extension_map = exporter->extension_map;
 
@@ -305,7 +312,7 @@ char		*string;
 		common_record = fs->nffile->buff_ptr;
 		done = 0;
 		while ( !done ) {
-			v5_block_t			*v5_block;
+			ipv4_block_t	*ipv4_block;
 
 			/* Process header */
 	
@@ -333,7 +340,7 @@ char		*string;
 
 			// map output record to memory buffer
 			common_record	= (common_record_t *)fs->nffile->buff_ptr;
-			v5_block		= (v5_block_t *)common_record->data;
+			ipv4_block		= (ipv4_block_t *)common_record->data;
 
 			// sequence check
 			if ( exporter->first ) {
@@ -374,6 +381,7 @@ char		*string;
 			/* loop over each records associated with this header */
 			for (i = 0; i < count; i++) {
 				pointer_addr_t	bsize;
+				uint64_t	packets, bytes;
 				void	*data_ptr;
 				uint8_t *s1, *s2;
 				int j, id;
@@ -393,13 +401,41 @@ char		*string;
 	  			common_record->fwd_status 	= 0;
 
 				// v5 typed data as fixed struct v5_block
-	  			v5_block->srcaddr	= ntohl(v5_record->srcaddr);
-	  			v5_block->dstaddr	= ntohl(v5_record->dstaddr);
-	  			v5_block->dPkts  	= ntohl(v5_record->dPkts);
-	  			v5_block->dOctets	= ntohl(v5_record->dOctets);
+	  			ipv4_block->srcaddr	= ntohl(v5_record->srcaddr);
+	  			ipv4_block->dstaddr	= ntohl(v5_record->dstaddr);
+
+				if ( exporter->sampling_interval == 1 ) {
+					value32_t   *v = (value32_t *)ipv4_block->data;
+
+	  				packets  	= (uint64_t)ntohl(v5_record->dPkts);
+	  				bytes		= (uint64_t)ntohl(v5_record->dOctets);
+
+					v->val		= packets;
+					v 			= (value32_t *)v->data;
+					v->val		= bytes;
+
+					data_ptr = (void *)v->data;
+				} else {
+					value64_t   *v = (value64_t *)ipv4_block->data;
+					uint32_t    *ptr = (uint32_t *)&packets;
+
+	  				packets  	= (uint64_t)ntohl(v5_record->dPkts)   * (uint64_t)exporter->sampling_interval;
+	  				bytes		= (uint64_t)ntohl(v5_record->dOctets) * (uint64_t)exporter->sampling_interval;
+
+					// pack packets in 32bit chunks
+					v->val.val32[0] = ptr[0];
+					v->val.val32[1] = ptr[1];
+
+					// pack bytes in 32bit chunks
+					v   = (value64_t *)v->data;
+					ptr = (uint32_t *)&bytes;
+					v->val.val32[0] = ptr[0];
+					v->val.val32[1] = ptr[1];
+
+					data_ptr = (void *)v->data;
+				}
 
 				// process optional extensions
-				data_ptr = (void *)v5_block->data;
 				j = 0;
 				while ( (id = extension_map->ex_id[j]) != 0 ) {
 					switch (id) {
@@ -497,13 +533,11 @@ char		*string;
 	
 	
 				// Update stats
-				v5_block->dPkts   *= exporter->sampling_interval;
-				v5_block->dOctets *= exporter->sampling_interval;
 				switch (common_record->prot) {
 					case IPPROTO_ICMP:
 						fs->nffile->stat_record->numflows_icmp++;
-						fs->nffile->stat_record->numpackets_icmp += v5_block->dPkts;
-						fs->nffile->stat_record->numbytes_icmp   += v5_block->dOctets;
+						fs->nffile->stat_record->numpackets_icmp += packets;
+						fs->nffile->stat_record->numbytes_icmp   += bytes;
 						// fix odd CISCO behaviour for ICMP port/type in src port
 						if ( common_record->srcport != 0 ) {
 							s1 = (uint8_t *)&(common_record->srcport);
@@ -515,25 +549,25 @@ char		*string;
 						break;
 					case IPPROTO_TCP:
 						fs->nffile->stat_record->numflows_tcp++;
-						fs->nffile->stat_record->numpackets_tcp += v5_block->dPkts;
-						fs->nffile->stat_record->numbytes_tcp   += v5_block->dOctets;
+						fs->nffile->stat_record->numpackets_tcp += packets;
+						fs->nffile->stat_record->numbytes_tcp   += bytes;
 						break;
 					case IPPROTO_UDP:
 						fs->nffile->stat_record->numflows_udp++;
-						fs->nffile->stat_record->numpackets_udp += v5_block->dPkts;
-						fs->nffile->stat_record->numbytes_udp   += v5_block->dOctets;
+						fs->nffile->stat_record->numpackets_udp += packets;
+						fs->nffile->stat_record->numbytes_udp   += bytes;
 						break;
 					default:
 						fs->nffile->stat_record->numflows_other++;
-						fs->nffile->stat_record->numpackets_other += v5_block->dPkts;
-						fs->nffile->stat_record->numbytes_other   += v5_block->dOctets;
+						fs->nffile->stat_record->numpackets_other += packets;
+						fs->nffile->stat_record->numbytes_other   += bytes;
 				}
 				fs->nffile->stat_record->numflows++;
-				fs->nffile->stat_record->numpackets	+= v5_block->dPkts;
-				fs->nffile->stat_record->numbytes	+= v5_block->dOctets;
+				fs->nffile->stat_record->numpackets	+= packets;
+				fs->nffile->stat_record->numbytes	+= bytes;
 
 				if ( fs->xstat ) {
-					uint32_t bpp = v5_block->dPkts ? v5_block->dOctets/v5_block->dPkts : 0;
+					uint32_t bpp = packets ? (bytes/packets) : 0;
 					if ( bpp > MAX_BPP ) 
 						bpp = MAX_BPP;
 					if ( common_record->prot == IPPROTO_TCP ) {
@@ -573,7 +607,7 @@ char		*string;
 				}
 				// advance to next output record
 				common_record	= (common_record_t *)data_ptr;
-				v5_block		= (v5_block_t *)common_record->data;
+				ipv4_block		= (ipv4_block_t *)common_record->data;
 				
 				// buffer size sanity check - should never happen, but check it anyway
 				bsize = (pointer_addr_t)common_record - (pointer_addr_t)fs->nffile->block_header - sizeof(data_block_header_t);

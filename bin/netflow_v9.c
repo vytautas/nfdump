@@ -150,8 +150,8 @@ static struct element_info_s {
 	uint16_t	extension;
 } element_info[128] = {
 	{ 0, 0, 0 }, 	//  0 - empty
-	{ 4, 8, 0 }, 	//  1 - NF9_IN_BYTES
-	{ 4, 8, 0 }, 	//  2 - NF9_IN_PACKETS
+	{ 8, 8, 0 }, 	//  1 - NF9_IN_BYTES
+	{ 8, 8, 0 }, 	//  2 - NF9_IN_PACKETS
 	{ 4, 8, 18 }, 	//  3 - NF9_FLOWS
 	{ 1, 1, 0 }, 	//  4 - NF9_IN_PROTOCOL
 	{ 1, 1, 0 },	//  5 - NF9_SRC_TOS
@@ -483,6 +483,10 @@ uint32_t	zero_index  = table->zero_index;
 		table->element[input_index].length 			= input_template[element].length;
 		(*offset)	+= output_length;
 		table->input_index++;
+
+		if ( input_template[element].length < output_length ) {
+
+		}
 	} else {
 
 		dbg_printf("Zero: %u, v9: %i,  Output Offset %u, len: %u\n", 
@@ -604,8 +608,8 @@ size_t				size_required;
 	if ( input_template[NF9_IN_PACKETS].length ) {
 		table->packet_offset = offset;
 		FillElement( table, NF9_IN_PACKETS, &offset);
-		if ( input_template[NF9_IN_PACKETS].length == 8 )
-			SetFlag(table->flags, FLAG_PKG_64);
+		// fix: always have 64byte counters if ( input_template[NF9_IN_PACKETS].length == 8 )
+		SetFlag(table->flags, FLAG_PKG_64);
 	} else
 		table->packet_offset = 0;
 
@@ -616,8 +620,8 @@ size_t				size_required;
 	if ( input_template[NF9_IN_BYTES].length ) {
 		table->byte_offset = offset;
 		FillElement( table, NF9_IN_BYTES, &offset);
-		if ( input_template[NF9_IN_BYTES].length == 8 )
-			SetFlag(table->flags, FLAG_BYTES_64);
+		// fix: always have 64byte counters if ( input_template[NF9_IN_BYTES].length == 8 )
+		SetFlag(table->flags, FLAG_BYTES_64);
 	} else 
 		table->byte_offset = 0;
 
@@ -1174,11 +1178,19 @@ char				*string;
 					*((uint32_t *)&out[output_offset]) = Get_val24((void *)&in[input_offset]);
 					break;
 				case 4: {
-					uint32_t p = Get_val32((void *)&in[input_offset]);
-					if ( output_offset == table->packet_offset || output_offset == table->byte_offset )
-						*((uint32_t *)&out[output_offset]) = (uint32_t)(p * sampling_rate);
-					else
+					if ( output_offset == table->packet_offset || output_offset == table->byte_offset ) {
+						// although bayte and packets are 4 bytes only, we store 8 bytes, as sampling
+						// may overflow 4 bytes. this is a tmp fix.
+						type_mask_t t;
+						t.val.val64 = (uint64_t)Get_val32((void *)&in[input_offset]);
+						t.val.val64 *= sampling_rate;
+
+						*((uint32_t *)&out[output_offset]) 	 = t.val.val32[0];
+						*((uint32_t *)&out[output_offset+4]) = t.val.val32[1];
+					} else {
+						uint32_t p = Get_val32((void *)&in[input_offset]);
 						*((uint32_t *)&out[output_offset]) = p;
+					}
 					} break;
 				case 5:
 					/* 64bit access to potentially unaligned output buffer. use 2 x 32bit for _LP64 CPUs */
@@ -1782,8 +1794,10 @@ uint32_t	i, count, record_length;
 		fields->record[count].length = htons(element_info[NF9_IN_PACKETS].max);
 		record_length 				+= element_info[NF9_IN_PACKETS].max;
 	} else {
-		fields->record[count].length = htons(element_info[NF9_IN_PACKETS].min);
-		record_length 				+= element_info[NF9_IN_PACKETS].min;
+		// fields->record[count].length = htons(element_info[NF9_IN_PACKETS].min);
+		fields->record[count].length = htons(4);
+		// record_length 				+= element_info[NF9_IN_PACKETS].min;
+		record_length 				+= 4;
 	}
 	count++;
 
@@ -1793,8 +1807,10 @@ uint32_t	i, count, record_length;
 		fields->record[count].length = htons(element_info[NF9_IN_BYTES].max);
 		record_length 				+= element_info[NF9_IN_BYTES].max;
 	} else {
-		fields->record[count].length = htons(element_info[NF9_IN_BYTES].min);
-		record_length 				+= element_info[NF9_IN_BYTES].min;
+		// fields->record[count].length = htons(element_info[NF9_IN_BYTES].min);
+		fields->record[count].length = htons(4);
+		// record_length 				+= element_info[NF9_IN_BYTES].min;
+		record_length 				+= 4;
 	}
 	count++;
 	// process extension map 

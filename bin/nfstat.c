@@ -319,7 +319,7 @@ struct order_mode_s {
 	{ NULL,       0, NULL}
 };
 
-static uint32_t	byte_limit, packet_limit;
+static uint64_t	byte_limit, packet_limit;
 static int byte_mode, packet_mode;
 enum { NONE = 0, LESS, MORE };
 
@@ -490,7 +490,7 @@ uint32_t	len,scale;
 					exit(250);
 				}
 		}
-		packet_limit = atol(s) * scale;
+		packet_limit = (uint64_t)atol(s) * (uint64_t)scale;
 	}
 
 	if ( byte_limit_string ) {
@@ -537,14 +537,14 @@ uint32_t	len,scale;
 				}
 				scale = 1;
 		}
-		byte_limit = atol(s) * scale;
+		byte_limit = (uint64_t)atol(s) * (uint64_t)scale;
 	}
 
 	if ( byte_limit )
-		printf("Byte limit: %c %u bytes\n", byte_mode == LESS ? '<' : '>', byte_limit);
+		printf("Byte limit: %c %llu bytes\n", byte_mode == LESS ? '<' : '>', byte_limit);
 
 	if ( packet_limit )
-		printf("Packet limit: %c %u packets\n", packet_mode == LESS ? '<' : '>', packet_limit);
+		printf("Packet limit: %c %llu packets\n", packet_mode == LESS ? '<' : '>', packet_limit);
 
 
 } // End of SetLimits

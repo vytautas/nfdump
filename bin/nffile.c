@@ -63,8 +63,6 @@
 // required for idet filter in nftree.c
 char 	*CurrentIdent;
 
-/* local vars */
-static file_header_t	FileHeader;
 
 #define READ_FILE	1
 #define WRITE_FILE	1
@@ -198,7 +196,7 @@ int ret, allocated;
 
 	ret = read(nffile->fd, (void *)nffile->file_header, sizeof(file_header_t));
 	if ( nffile->file_header->magic != MAGIC ) {
-		LogError("Open file '%s': bad magic: 0x%X\n", filename ? filename : "<stdin>", FileHeader.magic );
+		LogError("Open file '%s': bad magic: 0x%X\n", filename ? filename : "<stdin>", nffile->file_header->magic );
 		CloseFile(nffile);
 		if ( allocated ) {
 			DisposeFile(nffile);
@@ -207,7 +205,7 @@ int ret, allocated;
 	}
 
 	if ( nffile->file_header->version != LAYOUT_VERSION_1 ) {
-		LogError("Open file %s: bad version: %u\n", filename, FileHeader.version );
+		LogError("Open file %s: bad version: %u\n", filename, nffile->file_header->version );
 		CloseFile(nffile);
 		if ( allocated ) {
 			DisposeFile(nffile);
@@ -250,6 +248,7 @@ void CloseFile(nffile_t *nffile){
 } // End of CloseFile
 
 int ChangeIdent(char *filename, char *Ident) {
+file_header_t	FileHeader;
 struct stat stat_buf;
 int fd, ret;
 
@@ -314,7 +313,7 @@ void PrintStat(stat_record_t *s) {
 
 	// format info: make compiler happy with conversion to (unsigned long long), 
 	// which does not change the size of the parameter
-	printf("Ident: %s\n", FileHeader.ident);
+	printf("Ident: %s\n", CurrentIdent);
 	printf("Flows: %llu\n", (unsigned long long)s->numflows);
 	printf("Flows_tcp: %llu\n", (unsigned long long)s->numflows_tcp);
 	printf("Flows_udp: %llu\n", (unsigned long long)s->numflows_udp);
@@ -1011,13 +1010,13 @@ int fd, ret;
 	}
 
 	if ( file_header.magic != MAGIC ) {
-		LogError("Open file '%s': bad magic: 0x%X\n", filename ? filename : "<stdin>", FileHeader.magic );
+		LogError("Open file '%s': bad magic: 0x%X\n", filename ? filename : "<stdin>", file_header.magic );
 		close(fd);
 		return NULL;
 	}
 
 	if ( file_header.version != LAYOUT_VERSION_1 ) {
-		LogError("Open file %s: bad version: %u\n", filename, FileHeader.version );
+		LogError("Open file %s: bad version: %u\n", filename, file_header.version );
 		close(fd);
 		return NULL;
 	}
