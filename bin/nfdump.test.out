@@ -671,8 +671,7 @@ Flow Record:
   msec_last    =               320
   src addr     =      172.16.13.66
   dst addr     =   192.168.170.112
-  src port     =                 0
-  dst port     =                 8
+  ICMP         =               0.8 
   fwd status   =                14
   tcp flags    =              0x00 ......
   proto        =                 1
