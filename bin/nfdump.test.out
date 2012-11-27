@@ -1,7 +1,8 @@
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534600 [2004-07-11 10:30:00]
   last         =        1089534610 [2004-07-11 10:30:10]
   msec_first   =                10
@@ -48,11 +49,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534610 [2004-07-11 10:30:10]
   last         =        1089534630 [2004-07-11 10:30:30]
   msec_first   =               110
@@ -99,11 +103,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534620 [2004-07-11 10:30:20]
   last         =        1089534650 [2004-07-11 10:30:50]
   msec_first   =               210
@@ -150,11 +157,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534630 [2004-07-11 10:30:30]
   last         =        1089534670 [2004-07-11 10:31:10]
   msec_first   =               310
@@ -201,11 +211,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534640 [2004-07-11 10:30:40]
   last         =        1089534690 [2004-07-11 10:31:30]
   msec_first   =               410
@@ -252,11 +265,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534650 [2004-07-11 10:30:50]
   last         =        1089534710 [2004-07-11 10:31:50]
   msec_first   =               510
@@ -303,11 +319,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534660 [2004-07-11 10:31:00]
   last         =        1089534730 [2004-07-11 10:32:10]
   msec_first   =               610
@@ -354,11 +373,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534670 [2004-07-11 10:31:10]
   last         =        1089534750 [2004-07-11 10:32:30]
   msec_first   =               710
@@ -405,11 +427,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534680 [2004-07-11 10:31:20]
   last         =        1089534770 [2004-07-11 10:32:50]
   msec_first   =               810
@@ -456,11 +481,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534690 [2004-07-11 10:31:30]
   last         =        1089534790 [2004-07-11 10:33:10]
   msec_first   =               910
@@ -507,11 +535,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534700 [2004-07-11 10:31:40]
   last         =        1089534810 [2004-07-11 10:33:30]
   msec_first   =                10
@@ -558,11 +589,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534710 [2004-07-11 10:31:50]
   last         =        1089534830 [2004-07-11 10:33:50]
   msec_first   =               110
@@ -609,11 +643,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534720 [2004-07-11 10:32:00]
   last         =        1089534850 [2004-07-11 10:34:10]
   msec_first   =               210
@@ -660,11 +697,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534730 [2004-07-11 10:32:10]
   last         =        1089534870 [2004-07-11 10:34:30]
   msec_first   =               310
@@ -710,11 +750,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x00 Unsampled
-  size         =               160
+  export sysid =                 1
+  size         =               168
   first        =        1089534740 [2004-07-11 10:32:20]
   last         =        1089534890 [2004-07-11 10:34:50]
   msec_first   =               410
@@ -761,11 +804,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x01 Unsampled
-  size         =               184
+  export sysid =                 1
+  size         =               192
   first        =        1089534750 [2004-07-11 10:32:30]
   last         =        1089534910 [2004-07-11 10:35:10]
   msec_first   =               510
@@ -812,11 +858,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x01 Unsampled
-  size         =               184
+  export sysid =                 1
+  size         =               192
   first        =        1089534760 [2004-07-11 10:32:40]
   last         =        1089534930 [2004-07-11 10:35:30]
   msec_first   =               610
@@ -863,11 +912,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x05 Unsampled
-  size         =               188
+  export sysid =                 1
+  size         =               196
   first        =        1089534770 [2004-07-11 10:32:50]
   last         =        1089534950 [2004-07-11 10:35:50]
   msec_first   =               710
@@ -914,11 +966,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x03 Unsampled
-  size         =               188
+  export sysid =                 1
+  size         =               196
   first        =        1089534780 [2004-07-11 10:33:00]
   last         =        1089534970 [2004-07-11 10:36:10]
   msec_first   =               810
@@ -965,11 +1020,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x07 Unsampled
-  size         =               192
+  export sysid =                 1
+  size         =               200
   first        =        1089534790 [2004-07-11 10:33:10]
   last         =        1089534990 [2004-07-11 10:36:30]
   msec_first   =               910
@@ -1016,11 +1074,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x04 Unsampled
-  size         =               164
+  export sysid =                 1
+  size         =               172
   first        =        1089534800 [2004-07-11 10:33:20]
   last         =        1089535010 [2004-07-11 10:36:50]
   msec_first   =                10
@@ -1067,11 +1128,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x02 Unsampled
-  size         =               164
+  export sysid =                 1
+  size         =               172
   first        =        1089534810 [2004-07-11 10:33:30]
   last         =        1089535030 [2004-07-11 10:37:10]
   msec_first   =               110
@@ -1118,11 +1182,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x06 Unsampled
-  size         =               168
+  export sysid =                 1
+  size         =               176
   first        =        1089534820 [2004-07-11 10:33:40]
   last         =        1089535050 [2004-07-11 10:37:30]
   msec_first   =               210
@@ -1169,11 +1236,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x06 Unsampled
-  size         =               172
+  export sysid =                 1
+  size         =               180
   first        =        1089534830 [2004-07-11 10:33:50]
   last         =        1089535070 [2004-07-11 10:37:50]
   msec_first   =               310
@@ -1220,11 +1290,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x06 Unsampled
-  size         =               172
+  export sysid =                 1
+  size         =               180
   first        =        1089534840 [2004-07-11 10:34:00]
   last         =        1089535090 [2004-07-11 10:38:10]
   msec_first   =               410
@@ -1271,11 +1344,14 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
 
 Flow Record: 
   Flags        =              0x06 Unsampled
-  size         =               176
+  export sysid =                 1
+  size         =               184
   first        =        1089534850 [2004-07-11 10:34:10]
   last         =        1089535110 [2004-07-11 10:38:30]
   msec_first   =               510
@@ -1322,4 +1398,6 @@ Flow Record:
   ip router    =         127.0.0.1
   engine type  =                 5
   engine ID    =                 6
+  next as      =             45804
+  prev as      =             32775
 
