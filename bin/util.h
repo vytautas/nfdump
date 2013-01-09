@@ -81,4 +81,8 @@ char *GetCurrentFilename(void);
 
 void Setv6Mode(int mode);
 
+#define COPYFILE_BUFSIZE 1048576
+int CopyFile(char *src_path, char *dst_path);
+int MoveFile(char *src_path, char *dst_path);
+
 #endif //_UTIL_H

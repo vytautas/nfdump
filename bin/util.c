@@ -44,6 +44,8 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #ifndef SYSLOG_NAMES
 #define SYSLOG_NAMES 1
@@ -522,4 +524,59 @@ void InsertString(stringlist_t *list, char *string) {
 	}
 
 } // End of InsertString
+
+int CopyFile(char *src_path, char *dst_path) {
+	char buf[COPYFILE_BUFSIZE];
+	size_t size;
+	int src, dst;
+
+	if ( NULL == src_path || NULL == dst_path ) {
+		return -1;
+	}
+
+	if ( (src = open(src_path, O_RDONLY)) < 0 ) {
+		LogError("Could not open file %s at %s line %d: %s\n", src_path, __FILE__, __LINE__, strerror(errno));
+		return -1;
+	}
+
+	if ( (dst = open(dst_path, O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0 ) {
+		LogError("Could not open file %s at %s line %d: %s\n", dst_path, __FILE__, __LINE__, strerror(errno));
+		return -1;
+	}
+
+	while ( (size = read(src, buf, COPYFILE_BUFSIZE)) > 0 ) {
+		if ( write(dst, buf, size) < 0 ) {
+			LogError("Write error at %s line %d: %s\n", __FILE__, __LINE__, strerror(errno));
+			return -1;
+		}
+	}
+
+	if (size < 0) {
+		LogError("Read error at %s line %d: %s\n", __FILE__, __LINE__, strerror(errno));
+		return -1;
+	}
+
+	close(src);
+	close(dst);
+
+	return 0;
+} // End of CopyFile
+
+int MoveFile(char *src_path, char *dst_path) {
+	if ( NULL == src_path || NULL == dst_path ) {
+		return -1;
+	}
+
+	if ( CopyFile(src_path, dst_path) < 0 ) {
+		LogError("Could not copy file %s at %s line %d: %s\n", src_path, __FILE__, __LINE__, strerror(errno));
+		return -1;
+	}
+
+	if ( unlink(src_path) < 0 ) {
+		LogError("Could not unlink file %s at %s line %d: %s\n", src_path, __FILE__, __LINE__, strerror(errno));
+		return -1;
+	}
+
+	return 0;
+} // End of MoveFile
 
