@@ -475,7 +475,7 @@ uint32_t			index_cache;
 			FlowTableRecord->flowrecord.msec_last = flow_record->msec_last;
 		}
 
-		FlowTableRecord->counter[FLOWS]++;
+		FlowTableRecord->counter[FLOWS]   	 += flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 		FlowTableRecord->flowrecord.tcp_flags		  |= flow_record->tcp_flags;
 
 	} else if ( !bidir_flows || ( flow_record->prot != IPPROTO_TCP && flow_record->prot != IPPROTO_UDP) ) {
@@ -529,7 +529,7 @@ uint32_t			index_cache;
 				FlowTableRecord->flowrecord.msec_last = flow_record->msec_last;
 			}
 	
-			FlowTableRecord->counter[FLOWS]++;
+			FlowTableRecord->counter[FLOWS]   	 += flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 			FlowTableRecord->flowrecord.tcp_flags		  |= flow_record->tcp_flags;
 		} else {
 			// no bidir flow found 

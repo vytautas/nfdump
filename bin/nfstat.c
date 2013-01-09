@@ -912,7 +912,7 @@ int	j, i;
 					stat_record->last 		= flow_record->last;
 					stat_record->msec_last 	= flow_record->msec_last;
 				}
-				stat_record->counter[FLOWS]++;
+				stat_record->counter[FLOWS]		+= flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 
 			} else {
 				stat_record = stat_hash_insert(value[i], flow_record->prot, j);
@@ -924,7 +924,7 @@ int	j, i;
 				stat_record->last				= flow_record->last;
 				stat_record->msec_last			= flow_record->msec_last;
 				stat_record->record_flags		= flow_record->flags & 0x1;
-				stat_record->counter[FLOWS] 	= 1;
+				stat_record->counter[FLOWS]		= flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 			}
 		} // for the number of elements in this stat type
 	} // for every requested -s stat
