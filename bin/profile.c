@@ -77,7 +77,7 @@ static unsigned int num_channels;
 
 static inline int AppendString(char *stack, char *string, size_t	*buff_size);
 
-static void SetupProfileChannels(char *profile_datadir, char *profile_statdir, profile_param_info_t *profile_param, 
+static void SetupProfileChannels(char *profile_datadir, char *profile_statdir, char *profile_tmpdir, profile_param_info_t *profile_param,
 	int subdir_index, char *filterfile, char *filename, int verify_only, int compress, int do_xstat);
 
 profile_channel_info_t	*GetChannelInfoList(void) {
@@ -99,7 +99,7 @@ size_t len = strlen(string);
 
 } // End of AppendString
 
-unsigned int InitChannels(char *profile_datadir, char *profile_statdir, profile_param_info_t *profile_list, 
+unsigned int InitChannels(char *profile_datadir, char *profile_statdir, char *profile_tmpdir, profile_param_info_t *profile_list,
 	char *filterfile, char *filename, int subdir_index, int verify_only, int compress, int do_xstat) {
 profile_param_info_t	*profile_param;
 
@@ -110,7 +110,7 @@ profile_param_info_t	*profile_param;
 		profile_param->channelname, profile_param->profilename, profile_param->profilegroup, 
 		profile_param->channel_sourcelist);
 
-		SetupProfileChannels(profile_datadir, profile_statdir, profile_param, subdir_index, filterfile, filename, verify_only, compress, do_xstat);
+		SetupProfileChannels(profile_datadir, profile_statdir, profile_tmpdir, profile_param, subdir_index, filterfile, filename, verify_only, compress, do_xstat);
 
 		profile_param = profile_param->next;
 	}
@@ -118,7 +118,7 @@ profile_param_info_t	*profile_param;
 
 } // End of InitChannels
 
-static void SetupProfileChannels(char *profile_datadir, char *profile_statdir, profile_param_info_t *profile_param, 
+static void SetupProfileChannels(char *profile_datadir, char *profile_statdir, char *profile_tmpdir, profile_param_info_t *profile_param,
 	int subdir_index, char *filterfile, char *filename, int verify_only, int compress, int do_xstat ) {
 FilterEngine_data_t	*engine;
 struct 	stat stat_buf;
@@ -302,7 +302,7 @@ xstat_t	 *xstat;
 
 		// ofile: file while profiling
 		snprintf(path, MAXPATHLEN, "%s/%s/%s/%s/nfprofile.%llu", 
-			profile_datadir, profile_param->profilegroup, profile_param->profilename, profile_param->channelname, 
+			profile_tmpdir, profile_param->profilegroup, profile_param->profilename, profile_param->channelname,
 			(unsigned long long)getpid());
 		path[MAXPATHLEN-1] = '\0';
 
@@ -386,8 +386,8 @@ int ret, update_ok;
 			update_ok = ret == STATFILE_OK;
 
 	
-			if ( rename(profile_channels[num].ofile, profile_channels[num].wfile) < 0 ) {
-				LogError("Failed to rename file %s to %s: %s\n", 
+			if ( MoveFile(profile_channels[num].ofile, profile_channels[num].wfile) < 0 ) {
+				LogError("Failed to move file %s to %s: %s\n",
 					profile_channels[num].ofile, profile_channels[num].wfile, strerror(errno) );
 			} else if ( dirstat && tslot > dirstat->last ) {
 				dirstat->filesize += 512 * fstat.st_blocks;

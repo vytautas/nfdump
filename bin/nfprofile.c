@@ -106,6 +106,7 @@ static void usage(char *name) {
 					"-f\t\tfilename with filter syntaxfile\n"
 					"-p\t\tprofile data dir.\n"
 					"-P\t\tprofile stat dir.\n"
+					"-U\t\tprofile temporary dir.\n"
 					"-s\t\tprofile subdir.\n"
 					"-Z\t\tCheck filter syntax and exit.\n"
 					"-S subdir\tSub directory format. see nfcapd(1) for format\n"
@@ -515,13 +516,14 @@ unsigned int		num_channels, compress;
 struct stat stat_buf;
 profile_param_info_t *profile_list;
 char *rfile, *ffile, *filename, *Mdirs, *tstring;
-char	*profile_datadir, *profile_statdir, *nameserver;
+char	*profile_datadir, *profile_statdir, *profile_tmpdir, *nameserver;
 int c, syntax_only, subdir_index, stdin_profile_params, do_xstat;
 time_t tslot;
 
 	tstring 		= NULL;
 	profile_datadir = NULL;
 	profile_statdir = NULL;
+	profile_tmpdir	= NULL;
 	Mdirs 			= NULL;
 	tslot 			= 0;
 	syntax_only	    = 0;
@@ -539,7 +541,7 @@ time_t tslot;
 	// default file names
 	ffile = "filter.txt";
 	rfile = NULL;
-	while ((c = getopt(argc, argv, "D:HIL:p:P:hf:r:n:M:S:t:VzZ")) != EOF) {
+	while ((c = getopt(argc, argv, "D:HIL:p:P:U:hf:r:n:M:S:t:VzZ")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -569,6 +571,9 @@ time_t tslot;
 				break;
 			case 'P':
 				profile_statdir = optarg;
+				break;
+			case 'U':
+				profile_tmpdir = optarg;
 				break;
 			case 'S':
 				subdir_index = atoi(optarg);
@@ -611,6 +616,13 @@ time_t tslot;
 		profile_statdir = profile_datadir;
 	}
 
+	if ( !profile_tmpdir ) {
+		profile_tmpdir = profile_datadir;
+	} else if ( stat(profile_tmpdir, &stat_buf) || !S_ISDIR(stat_buf.st_mode) ) {
+		LogError("'%s' not a directory\n", profile_tmpdir);
+		exit(255);
+	}
+
 	if ( stat(profile_datadir, &stat_buf) || !S_ISDIR(stat_buf.st_mode) ) {
 		LogError("'%s' not a directory\n", profile_datadir);
 		exit(255);
@@ -645,7 +657,7 @@ time_t tslot;
 		exit(255);
 	}
 
-	num_channels = InitChannels(profile_datadir, profile_statdir, profile_list, ffile, filename, subdir_index, syntax_only, compress, do_xstat);
+	num_channels = InitChannels(profile_datadir, profile_statdir, profile_tmpdir, profile_list, ffile, filename, subdir_index, syntax_only, compress, do_xstat);
 
 	// nothing to do
 	if ( num_channels == 0 ) {
