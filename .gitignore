@@ -19,6 +19,8 @@ Makefile.in
 /bin/nfgen
 /bin/nfreplay
 /bin/nftest
+/bin/nfprofile
+/bin/nfcat
 /bin/*.o
 /bin/scanner.c
 /compile

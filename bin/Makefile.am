@@ -1,5 +1,5 @@
 
-bin_PROGRAMS = nfcapd nfdump nfreplay nfexpire nfanon
+bin_PROGRAMS = nfcapd nfdump nfreplay nfexpire nfanon nfcat
 EXTRA_PROGRAMS = nftest nfgen nfreader
 
 check_PROGRAMMS = test.sh
@@ -100,6 +100,8 @@ nfexpire_LDADD = @FTS_OBJ@
 
 nftest_SOURCES = nftest.c $(common) $(filter) $(filelzo)
 nftest_DEPENDENCIES = nfgen
+
+nfcat_SOURCES = nfcat.c $(util) $(filelzo)
 
 if FT2NFDUMP
 ft2nfdump_SOURCES = ft2nfdump.c $(common) $(filelzo) $(util)
