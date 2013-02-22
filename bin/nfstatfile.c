@@ -437,8 +437,9 @@ int fd, err, r_size, new_created, next_free;
 } // End of ReadStatInfo
 
 int WriteStatInfo(dirstat_t *dirstat) {
-int i, index, fd, err;
-char *filename, line[256];
+int i, index, fd;
+char *filename, *tmpfilename, line[256];
+mode_t oldmask;
 
 	// search for entry in dirstat stack
 	for (i=0; dirstat_stack[i].dirstat != dirstat && i < stack_max_entries; i++ ) {}
@@ -453,30 +454,27 @@ char *filename, line[256];
 	fd = dirstat_stack[index].fd;
 	filename = dirstat_stack[index].filename;
 
-	if ( fd == 0 ) {
-		fd =  open(filename, O_RDWR|O_TRUNC|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    	if ( fd < 0 ) {
-			LogError( "open() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+	// Unlock and close the ".nfstat" file, since we will be writing into
+	// a temporary one.
+	if (fd != 0) {
+		ReleaseFileLock(fd);
+		dirstat_stack[index].fd = 0;
+		if ( close(fd) == -1 ) {
+			LogError( "close() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 			return ERR_FAIL;
-    	}
+		}
+	}
 
-		err = SetFileLock(fd);
-		if ( err != 0 ) {
-			LogError( "ioctl(F_WRLCK) error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-			close(fd);
-			return ERR_FAIL;
-		}
-	} else {
-		err = lseek(fd, SEEK_SET, 0);
-		if ( err == -1 ) {
-			LogError( "lseek() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-			ReleaseFileLock(fd);
-			close(fd);
-			return ERR_FAIL;
-		}
-		if ( ftruncate(fd, 0) < 0 ) {
-			LogError( "ftruncate() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		}
+	// Write data into a temporary file and then rename it to the ".nfstat"
+	tmpfilename = malloc(strlen(filename)+8);
+	strcpy(tmpfilename, filename);
+	strcat(tmpfilename, "-XXXXXX");
+	oldmask = umask( S_IXUSR | S_IWGRP | S_IXGRP | S_IRWXO);
+	fd = mkstemp(tmpfilename);
+	umask(oldmask);
+	if ( fd < 0 ) {
+		LogError( "open() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		return ERR_FAIL;
 	}
 
 	dirstat_tmpl = *dirstat_stack[index].dirstat;
@@ -492,11 +490,21 @@ char *filename, line[256];
 		i++;
 	}
 
-	ReleaseFileLock(fd);
-	err = close(fd);
-	dirstat_stack[index].fd = 0;
-	if ( err == -1 ) {
+	if ( close(fd) == -1 ) {
 		LogError( "close() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		return ERR_FAIL;
+	}
+
+	// HDFS does not like rename when new path exists. Unfortunately it does
+	// creates a race codition which should be fixed when HDFS improves
+	// it's implementation for rename().
+	if ( (unlink(filename) == -1) && (errno != ENOENT) ) {
+		LogError( "unlink() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		return ERR_FAIL;
+	}
+
+	if ( rename(tmpfilename, filename) == -1 ) {
+		LogError( "rename() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return ERR_FAIL;
 	}
 
