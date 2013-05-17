@@ -1,6 +1,6 @@
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534600 [2004-07-11 10:30:00]
@@ -54,7 +54,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534610 [2004-07-11 10:30:10]
@@ -108,7 +108,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534620 [2004-07-11 10:30:20]
@@ -162,7 +162,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534630 [2004-07-11 10:30:30]
@@ -216,7 +216,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534640 [2004-07-11 10:30:40]
@@ -270,7 +270,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534650 [2004-07-11 10:30:50]
@@ -324,7 +324,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534660 [2004-07-11 10:31:00]
@@ -378,7 +378,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534670 [2004-07-11 10:31:10]
@@ -432,7 +432,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534680 [2004-07-11 10:31:20]
@@ -486,7 +486,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534690 [2004-07-11 10:31:30]
@@ -540,7 +540,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534700 [2004-07-11 10:31:40]
@@ -594,7 +594,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534710 [2004-07-11 10:31:50]
@@ -648,7 +648,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534720 [2004-07-11 10:32:00]
@@ -702,7 +702,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534730 [2004-07-11 10:32:10]
@@ -711,7 +711,7 @@ Flow Record:
   msec_last    =               320
   src addr     =      172.16.13.66
   dst addr     =   192.168.170.112
-  ICMP         =               0.8 
+  ICMP         =               0.8  type.code
   fwd status   =                14
   tcp flags    =              0x00 ......
   proto        =                 1
@@ -755,7 +755,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x00 Unsampled
+  Flags        =              0x00 FLOW, Unsampled
   export sysid =                 1
   size         =               168
   first        =        1089534740 [2004-07-11 10:32:20]
@@ -809,7 +809,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x01 Unsampled
+  Flags        =              0x01 FLOW, Unsampled
   export sysid =                 1
   size         =               192
   first        =        1089534750 [2004-07-11 10:32:30]
@@ -863,7 +863,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x01 Unsampled
+  Flags        =              0x01 FLOW, Unsampled
   export sysid =                 1
   size         =               192
   first        =        1089534760 [2004-07-11 10:32:40]
@@ -917,7 +917,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x05 Unsampled
+  Flags        =              0x05 FLOW, Unsampled
   export sysid =                 1
   size         =               196
   first        =        1089534770 [2004-07-11 10:32:50]
@@ -971,7 +971,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x03 Unsampled
+  Flags        =              0x03 FLOW, Unsampled
   export sysid =                 1
   size         =               196
   first        =        1089534780 [2004-07-11 10:33:00]
@@ -1025,7 +1025,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x07 Unsampled
+  Flags        =              0x07 FLOW, Unsampled
   export sysid =                 1
   size         =               200
   first        =        1089534790 [2004-07-11 10:33:10]
@@ -1079,7 +1079,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x04 Unsampled
+  Flags        =              0x04 FLOW, Unsampled
   export sysid =                 1
   size         =               172
   first        =        1089534800 [2004-07-11 10:33:20]
@@ -1133,7 +1133,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x02 Unsampled
+  Flags        =              0x02 FLOW, Unsampled
   export sysid =                 1
   size         =               172
   first        =        1089534810 [2004-07-11 10:33:30]
@@ -1187,7 +1187,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x06 Unsampled
+  Flags        =              0x06 FLOW, Unsampled
   export sysid =                 1
   size         =               176
   first        =        1089534820 [2004-07-11 10:33:40]
@@ -1241,7 +1241,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x06 Unsampled
+  Flags        =              0x06 FLOW, Unsampled
   export sysid =                 1
   size         =               180
   first        =        1089534830 [2004-07-11 10:33:50]
@@ -1295,7 +1295,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x06 Unsampled
+  Flags        =              0x06 FLOW, Unsampled
   export sysid =                 1
   size         =               180
   first        =        1089534840 [2004-07-11 10:34:00]
@@ -1349,7 +1349,7 @@ Flow Record:
 
 
 Flow Record: 
-  Flags        =              0x06 Unsampled
+  Flags        =              0x06 FLOW, Unsampled
   export sysid =                 1
   size         =               184
   first        =        1089534850 [2004-07-11 10:34:10]
