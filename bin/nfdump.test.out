@@ -13,7 +13,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 1
   tcp flags    =              0x01 .....F
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 2
   (in)packets  =               202
   (in)bytes    =               303
@@ -67,7 +67,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 2
   tcp flags    =              0x01 .....F
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 2
   (in)packets  =               202
   (in)bytes    =               303
@@ -121,7 +121,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 3
   tcp flags    =              0x01 .....F
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 2
   (in)packets  =               101
   (in)bytes    =               102
@@ -175,7 +175,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 4
   tcp flags    =              0x01 .....F
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 2
   (in)packets  =               101
   (in)bytes    =               102
@@ -229,7 +229,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 5
   tcp flags    =              0x01 .....F
-  proto        =                17
+  proto        =                17 UDP  
   (src)tos     =                 1
   (in)packets  =              1001
   (in)bytes    =              1002
@@ -283,7 +283,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 6
   tcp flags    =              0x02 ....S.
-  proto        =                51
+  proto        =                51 AH   
   (src)tos     =                 2
   (in)packets  =             10001
   (in)bytes    =             10002
@@ -337,7 +337,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 7
   tcp flags    =              0x04 ...R..
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 3
   (in)packets  =            100001
   (in)bytes    =            100002
@@ -391,7 +391,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 8
   tcp flags    =              0x08 ..P...
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 4
   (in)packets  =           1000001
   (in)bytes    =           1000002
@@ -445,7 +445,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                 9
   tcp flags    =              0x01 .....F
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 4
   (in)packets  =          10000001
   (in)bytes    =              1001
@@ -499,7 +499,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                10
   tcp flags    =              0x10 .A....
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 5
   (in)packets  =               500
   (in)bytes    =          10000001
@@ -553,7 +553,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                11
   tcp flags    =              0x10 .A....
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 5
   (in)packets  =               500
   (in)bytes    =          10000001
@@ -607,7 +607,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                12
   tcp flags    =              0x20 U.....
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =               255
   (in)packets  =              5000
   (in)bytes    =         100000001
@@ -661,7 +661,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                13
   tcp flags    =              0x3f UAPRSF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =              5000
   (in)bytes    =        1000000001
@@ -714,7 +714,7 @@ Flow Record:
   ICMP         =               0.8  type.code
   fwd status   =                14
   tcp flags    =              0x00 ......
-  proto        =                 1
+  proto        =                 1 ICMP 
   (src)tos     =                 0
   (in)packets  =             50002
   (in)bytes    =             50000
@@ -768,7 +768,7 @@ Flow Record:
   dst port     =             25000
   fwd status   =                15
   tcp flags    =              0x00 ......
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =            500001
   (in)bytes    =            500000
@@ -822,7 +822,7 @@ Flow Record:
   dst port     =                25
   fwd status   =                16
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =                10
   (in)bytes    =             15100
@@ -876,7 +876,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                17
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =             10100
   (in)bytes    =          15000000
@@ -930,7 +930,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                18
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =          10100000
   (in)bytes    =        4294967296
@@ -984,7 +984,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                19
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =        4294967296
   (in)bytes    =          15000000
@@ -1038,7 +1038,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                20
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =        4294967296
   (in)bytes    =        8589934592
@@ -1092,7 +1092,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                21
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =          10100000
   (in)bytes    =        4294967296
@@ -1146,7 +1146,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                22
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =        4294967296
   (in)bytes    =          15000000
@@ -1200,7 +1200,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                23
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =        4294967296
   (in)bytes    =        8589934592
@@ -1254,7 +1254,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                24
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =        4294967296
   (in)bytes    =        8589934592
@@ -1308,7 +1308,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                25
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =        4294967296
   (in)bytes    =        8589934592
@@ -1362,7 +1362,7 @@ Flow Record:
   dst port     =             52345
   fwd status   =                26
   tcp flags    =              0x1b .AP.SF
-  proto        =                 6
+  proto        =                 6 TCP  
   (src)tos     =                 0
   (in)packets  =        4294967296
   (in)bytes    =        8589934592
