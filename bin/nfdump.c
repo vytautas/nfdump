@@ -89,7 +89,10 @@ FilterEngine_data_t	*Engine;
 
 extern char	*FilterFilename;
 extern uint32_t loopcnt;
+
+#ifdef COMPAT15
 extern extension_descriptor_t extension_descriptor[];
+#endif
 
 /* Local Variables */
 const char *nfdump_version = VERSION;
@@ -106,7 +109,7 @@ int hash_hit = 0;
 int hash_miss = 0;
 int hash_skip = 0;
 
-extension_map_list_t extension_map_list;
+extension_map_list_t *extension_map_list;
 
 extern generic_exporter_t **exporter_list;
 /*
@@ -182,6 +185,22 @@ extern generic_exporter_t **exporter_list;
 
 #define FORMAT_bilong "%ts %td %pr %sap <-> %dap %flg %tos %opkt %ipkt %obyt %ibyt %fl"
 
+#define FORMAT_nsel "%ts %evt %xevt %pr %sap -> %dap %xsap -> %xdap %ibyt %obyt"
+
+#define FORMAT_nel "%ts %nevt %pr %sap -> %dap %nsap -> %ndap"
+
+#ifdef NSEL
+#	define DefaultMode "nsel"
+#else 
+
+#ifdef NEL
+#	define DefaultMode "nel"
+#else
+#	define DefaultMode "line"
+#endif
+
+#endif
+
 /* The appropriate header line is compiled automatically.
  *
  * For each defined output format a v6 long format automatically exists as well e.g.
@@ -213,13 +232,18 @@ printmap_t printmap[] = {
 	{ "bilong", 	format_special,      		FORMAT_bilong 	},
 	{ "pipe", 		flow_record_to_pipe,      	NULL 			},
 	{ "csv", 		flow_record_to_csv,      	NULL 			},
+#ifdef NSEL
+	{ "nsel",		format_special, 			FORMAT_nsel		},
+#endif
+#ifdef NEL
+	{ "nel",		format_special, 			FORMAT_nel		},
+#endif
+
 // add your formats here
 
 // This is always the last line
 	{ NULL,			NULL,                       NULL			}
 };
-
-#define DefaultMode "line"
 
 // For automatic output format generation in case of custom aggregation
 #define AggrPrependFmt	"%ts %td "
@@ -491,7 +515,7 @@ int	v1_map_done = 0;
 				map->extension_size += extension_descriptor[EX_IO_SNMP_2].size;
 				map->extension_size += extension_descriptor[EX_AS_2].size;
 
-				if ( Insert_Extension_Map(&extension_map_list,map) && write_file ) {
+				if ( Insert_Extension_Map(extension_map_list,map) && write_file ) {
 					// flush new map
 					AppendToBuffer(nffile_w, (void *)map, map->size);
 				} // else map already known and flushed
@@ -538,16 +562,16 @@ int	v1_map_done = 0;
 						LogError("Corrupt data file. Extension map id %u too big.\n", flow_record->ext_map);
 						exit(255);
 					}
-					if ( extension_map_list.slot[map_id] == NULL ) {
+					if ( extension_map_list->slot[map_id] == NULL ) {
 						LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
 						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 						continue;
 					} 
 
 					total_flows++;
-					master_record = &(extension_map_list.slot[map_id]->master_record);
+					master_record = &(extension_map_list->slot[map_id]->master_record);
 					Engine->nfrecord = (uint64_t *)master_record;
-					ExpandRecord_v2( flow_record, extension_map_list.slot[map_id], 
+					ExpandRecord_v2( flow_record, extension_map_list->slot[map_id], 
 						exp_info ? &(exp_info->info) : NULL, master_record);
 
 					// Time based filter
@@ -571,17 +595,17 @@ int	v1_map_done = 0;
 					UpdateStat(&stat_record, master_record);
 
 					// update number of flows matching a given map
-					extension_map_list.slot[map_id]->ref_count++;
+					extension_map_list->slot[map_id]->ref_count++;
 	
 					if ( flow_stat ) {
-						AddFlow(flow_record, master_record);
+						AddFlow(flow_record, master_record, extension_map_list->slot[map_id]);
 						if ( element_stat ) {
 							AddStat(flow_record, master_record);
 						} 
 					} else if ( element_stat ) {
 						AddStat(flow_record, master_record);
 					} else if ( sort_flows ) {
-						InsertFlow(flow_record, master_record);
+						InsertFlow(flow_record, master_record, extension_map_list->slot[map_id]);
 					} else {
 						if ( write_file ) {
 							AppendToBuffer(nffile_w, (void *)flow_record, flow_record->size);
@@ -608,7 +632,7 @@ int	v1_map_done = 0;
 				case ExtensionMapType: {
 					extension_map_t *map = (extension_map_t *)flow_record;
 	
-					if ( Insert_Extension_Map(&extension_map_list, map) && write_file ) {
+					if ( Insert_Extension_Map(extension_map_list, map) && write_file ) {
 						// flush new map
 						AppendToBuffer(nffile_w, (void *)map, map->size);
 					} // else map already known and flushed
@@ -681,7 +705,7 @@ int	v1_map_done = 0;
 		} // else stdout
 	}	 
 
-	PackExtensionMapList(&extension_map_list);
+	PackExtensionMapList(extension_map_list);
 
 	DisposeFile(nffile_r);
 	return stat_record;
@@ -813,10 +837,19 @@ char 		Ident[IDENTLEN];
                     exit(255);
                 } 
 				break;
-			case 'V':
-				printf("%s: Version: %s\n",argv[0], nfdump_version);
+			case 'V': {
+				char *e1, *e2;
+				e1 = "";
+				e2 = "";
+#ifdef NSEL
+				e1 = "NSEL-";
+#endif
+#ifdef NEL
+				e2 = "NEL-";
+#endif
+				printf("%s: Version: %s%s%s\n",argv[0], e1, e2, nfdump_version);
 				exit(0);
-				break;
+				} break;
 			case 'l':
 				packet_limit_string = optarg;
 				break;
@@ -900,7 +933,7 @@ char 		Ident[IDENTLEN];
 				break;
 			case 'x':
 				query_file = optarg;
-				InitExtensionMaps(NULL);
+				InitExtensionMaps(NO_EXTENSION_LIST);
 				DumpExMaps(query_file);
 				exit(0);
 				break;
@@ -950,7 +983,7 @@ char 		Ident[IDENTLEN];
 		exit(255);
 	}
 
-	InitExtensionMaps(&extension_map_list);
+	extension_map_list = InitExtensionMaps(NEEDS_EXTENSION_LIST);
 	if ( !InitExporterList() ) {
 		exit(255);
 	}
@@ -1161,7 +1194,7 @@ char 		Ident[IDENTLEN];
 			nffile_t *nffile = OpenNewFile(wfile, NULL, compress, is_anonymized, NULL);
 			if ( !nffile ) 
 				exit(255);
-			if ( ExportFlowTable(nffile, aggregate, bidir, date_sorted) ) {
+			if ( ExportFlowTable(nffile, aggregate, bidir, date_sorted, extension_map_list) ) {
 				CloseUpdateFile(nffile, Ident );	
 			} else {
 				CloseFile(nffile);
@@ -1169,12 +1202,12 @@ char 		Ident[IDENTLEN];
 			}
 			DisposeFile(nffile);
 		} else {
-			PrintFlowTable(print_record, limitflows, do_tag, GuessDir);
+			PrintFlowTable(print_record, limitflows, do_tag, GuessDir, extension_map_list);
 		}
 	}
 
 	if (flow_stat) {
-		PrintFlowStat(record_header, print_record, topN, do_tag, quiet, csv_output);
+		PrintFlowStat(record_header, print_record, topN, do_tag, quiet, csv_output, extension_map_list);
 #ifdef DEVEL
 		printf("Loopcnt: %u\n", loopcnt);
 #endif
@@ -1205,7 +1238,7 @@ char 		Ident[IDENTLEN];
 
 	Dispose_FlowTable();
 	Dispose_StatTable();
-	FreeExtensionMaps(&extension_map_list);
+	FreeExtensionMaps(extension_map_list);
 
 #ifdef DEVEL
 	if ( hash_hit || hash_miss )

@@ -52,6 +52,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/param.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
@@ -868,7 +869,7 @@ int	c;
 		}
 	}
 
-	InitExtensionMaps(NULL);
+	InitExtensionMaps(NO_EXTENSION_LIST);
 	SetupExtensionDescriptors(strdup(extension_tags));
 
 	if ( FlowSource == NULL && datadir == NULL ) {

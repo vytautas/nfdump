@@ -1,6 +1,5 @@
 /*
- *  Copyright (c) 2009, Peter Haag
- *  Copyright (c) 2004-2008, SWITCH - Teleinformatikdienste fuer Lehre und Forschung
+ *  Copyright (c) 2013, Peter Haag
  *  All rights reserved.
  *  
  *  Redistribution and use in source and binary forms, with or without 
@@ -11,7 +10,7 @@
  *   * Redistributions in binary form must reproduce the above copyright notice, 
  *     this list of conditions and the following disclaimer in the documentation 
  *     and/or other materials provided with the distribution.
- *   * Neither the name of SWITCH nor the names of its contributors may be 
+ *   * Neither the name of the author nor the names of its contributors may be 
  *     used to endorse or promote products derived from this software without 
  *     specific prior written permission.
  *  
@@ -27,58 +26,16 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
  *  POSSIBILITY OF SUCH DAMAGE.
  *  
- *  $Author: haag $
+ *  $Author:$
  *
- *  $Id: nfdump.h 39 2009-11-25 08:11:15Z haag $
+ *  $Id:$
  *
- *  $LastChangedRevision: 39 $
+ *  $LastChangedRevision:$
  *	
+ *
  */
 
-#ifndef _NFDUMP_H
-#define _NFDUMP_H 1
+int Init_pcap2nf(void);
 
-#define BuffNumRecords	1024
-
-/* 
- * Offset definitions for filter engine. Offsets must agree with the defined
- * flow record definition data_block_record_t in nffile.h
- */
-
-#include "config.h"
-
-typedef struct FilterParam {
-	uint16_t	comp;
-	uint16_t	direction;
-	uint32_t	data;
-	uint32_t	inout;
-	uint32_t	acl;
-	uint32_t	self;
-} FilterParam_t;
-
-/* IP tree type */
-typedef RB_HEAD(IPtree, IPListNode) IPlist_t;
-
-/* Port/AS tree type */
-typedef RB_HEAD(ULongtree, ULongListNode) ULongtree_t;
-
-/* parser/scanner prototypes */
-int yyparse(void);
-
-int yylex(void);
-
-void lex_cleanup(void);
-
-void lex_init(char *buf);
-
-int ScreenIPString(char *string);
-
-int ScreenIdentString(char *string);
-
-// Insert the RB prototypes here
-RB_PROTOTYPE(IPtree, IPListNode, entry, IPNodeCMP);
-
-RB_PROTOTYPE(ULongtree, ULongListNode, entry, ULNodeCMP);
-
-#endif //_NFDUMP_H
+int StorePcapFlow(FlowSource_t *fs, struct FlowNode *Node);
 

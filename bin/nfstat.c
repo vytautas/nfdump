@@ -70,7 +70,6 @@
 extern int hash_hit;
 extern int hash_miss;
 extern int hash_skip;
-extern extension_map_list_t extension_map_list;
 
 struct flow_element_s {
 	uint32_t	offset0;
@@ -79,7 +78,7 @@ struct flow_element_s {
 	uint32_t	shift;		// number of bits to shift right to get final value
 };
 
-enum { IS_NUMBER = 1, IS_IPADDR, IS_MACADDR, IS_MPLS_LBL, IS_LATENCY};
+enum { IS_NUMBER = 1, IS_IPADDR, IS_MACADDR, IS_MPLS_LBL, IS_LATENCY, IS_EVENT, IS_HEX};
 
 struct StatParameter_s {
 	char					*statname;		// name of -s option
@@ -291,6 +290,83 @@ struct StatParameter_s {
 		{ {0, OffsetAppLatency, MaskLatency, 0}, {0,0,0,0} },
 			1, IS_LATENCY },
 
+#ifdef NSEL
+	{ "event", " Event", 
+		{ {0, OffsetConnID, MaskFWevent, ShiftFWevent}, 		{0,0,0,0} },
+			1, IS_EVENT},
+
+	{ "xevent", "X-Event", 
+		{ {0, OffsetConnID, MaskFWXevent, ShiftFWXevent}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "xsrcip",	 "X-Src IP Addr", 
+		{ {OffsetXLATESRCv6a, OffsetXLATESRCv6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "xdstip",	 "X-Dst IP Addr", 
+		{ {OffsetXLATEDSTv6a, OffsetXLATEDSTv6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "xsrcport", " X-Src Port", 
+		{ {0, OffsetXLATEPort, MaskXLATESRCPORT, ShiftXLATESRCPORT}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "xdstport", " X-Dst Port", 
+		{ {0, OffsetXLATEPort, MaskXLATEDSTPORT, ShiftXLATEDSTPORT}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "iacl", "Ingress ACL", 
+		{ {0, OffsetIngressAclId, MaskIngressAclId, ShiftIngressAclId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "iace", "Ingress ACE", 
+		{ {0, OffsetIngressAceId, MaskIngressAceId, ShiftIngressAceId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "ixace", "Ingress xACE", 
+		{ {0, OffsetIngressGrpId, MaskIngressGrpId, ShiftIngressGrpId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "eacl", "Egress ACL", 
+		{ {0, OffsetEgressAclId, MaskEgressAclId, ShiftEgressAclId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "eace", "Egress ACE", 
+		{ {0, OffsetEgressAceId, MaskEgressAceId, ShiftEgressAceId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "exace", "Egress xACE", 
+		{ {0, OffsetEgressGrpId, MaskEgressGrpId, ShiftEgressGrpId}, 		{0,0,0,0} },
+			1, IS_HEX},
+#endif
+
+#ifdef NEL
+	{ "nevent", " Event", 
+		{ {0, OffsetNELcommon, MasNATevent, ShiftNATevent}, 		{0,0,0,0} },
+			1, IS_EVENT},
+
+	{ "vrf", " vrf-ID", 
+		{ {0, OffsetVRFID, MaskVRFID, ShiftVRFID}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "nsrcip",	 "N-Src IP Addr", 
+		{ {OffsetGlobalInsidev6a, OffsetGlobalInsidev6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "ndstip",	 "N-Dst IP Addr", 
+		{ {OffsetGlobalOutsidev6a, OffsetGlobalOutsidev6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "nsrcport", " N-Src Port", 
+		{ {0, OffsetNELcommon, MaskPostSRCPort, ShiftPostSRCPort}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "ndstport", " N-Dst Port", 
+		{ {0, OffsetNELcommon, MaskPostDSTPort, ShiftPostDSTPort}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+#endif
+
 	{ NULL, 	 NULL, 			
 		{ {0,0,0,0},	{0,0,0,0} },
 			1, 0 }
@@ -364,7 +440,7 @@ static inline StatRecord_t *stat_hash_insert(uint64_t *value, uint8_t prot, int 
 static void Expand_StatTable_Blocks(int hash_num);
 
 inline void PrintSortedFlowcache(SortElement_t *SortList, uint32_t maxindex, int limit_count, int GuessFlowDirection, 
-	printer_t print_record, int tag, int ascending );
+	printer_t print_record, int tag, int ascending, extension_map_list_t *extension_map_list );
 
 static void PrintStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int order_proto, int tag);
 
@@ -912,7 +988,7 @@ int	j, i;
 					stat_record->last 		= flow_record->last;
 					stat_record->msec_last 	= flow_record->msec_last;
 				}
-				stat_record->counter[FLOWS]		+= flow_record->aggr_flows ? flow_record->aggr_flows : 1;
+				stat_record->counter[FLOWS] += flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 
 			} else {
 				stat_record = stat_hash_insert(value[i], flow_record->prot, j);
@@ -980,6 +1056,32 @@ struct tm	*tbuff;
 			} break;
 		case IS_LATENCY: {
 			snprintf(valstr, 40, "      %9.3f", (double)((double)StatData->stat_key[1]/1000.0));
+			} break;
+#ifdef NSEL
+		case IS_EVENT: {
+			long long unsigned event = StatData->stat_key[1];
+			char *s;
+			switch(event) {
+				case 0:
+					s = "ignore";
+					break;
+				case 1:
+					s = "CREATE";
+					break;
+				case 2:
+					s = "DELETE";
+					break;
+				case 3:
+					s = "DENIED";
+					break;
+				default:
+					s = "UNKNOWN";
+			}			
+			snprintf(valstr, 40, "      %6s", s);
+			} break;
+#endif
+		case IS_HEX: {
+			snprintf(valstr, 40, "0x%llx", (unsigned long long)StatData->stat_key[1]);
 		} break;
 	}
 
@@ -989,9 +1091,9 @@ struct tm	*tbuff;
 	format_number(StatData->counter[INPACKETS], packets_str, FIXED_WIDTH);
 	format_number(StatData->counter[INBYTES], byte_str, FIXED_WIDTH);
 
-	flows_percent   = (double)(StatData->counter[FLOWS] * 100 ) / (double)stat->numflows;
-	packets_percent = (double)(StatData->counter[INPACKETS] * 100 ) / (double)stat->numpackets;
-	bytes_percent   = (double)(StatData->counter[INBYTES] * 100 ) / (double)stat->numbytes;
+	flows_percent   = stat->numflows   ? (double)(StatData->counter[FLOWS] * 100 ) / (double)stat->numflows : 0;
+	packets_percent = stat->numpackets ? (double)(StatData->counter[INPACKETS] * 100 ) / (double)stat->numpackets : 0;
+	bytes_percent   = stat->numbytes   ? (double)(StatData->counter[INBYTES] * 100 ) / (double)stat->numbytes : 0;
 
 	duration = StatData->last - StatData->first;
 	duration += ((double)StatData->msec_last - (double)StatData->msec_first) / 1000.0;
@@ -1203,7 +1305,7 @@ struct tm	*tbuff;
 
 } // End of PrintCvsStatLine
 
-void PrintFlowTable(printer_t print_record, uint32_t limitflows, int tag, int GuessDir) {
+void PrintFlowTable(printer_t print_record, uint32_t limitflows, int tag, int GuessDir, extension_map_list_t *extension_map_list) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 master_record_t		*aggr_record_mask;
@@ -1266,7 +1368,7 @@ char				*string;
  			heapSort(SortList, c, 0);
 
 		PrintSortedFlowcache(SortList, maxindex, limitflows, GuessDir, 
-			print_record, tag, order_mode[PrintOrder].direction);
+			print_record, tag, order_mode[PrintOrder].direction, extension_map_list);
 
 /*
 		if ( limitflows && limitflows < maxindex )
@@ -1336,10 +1438,10 @@ char				*string;
 				}
 
 				raw_record = &(r->flowrecord);
-				map_id = r->map_ref->map_id;
+				map_id = r->map_info_ref->map->map_id;
 
-				flow_record = &(extension_map_list.slot[map_id]->master_record);
-				ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
+				flow_record = &(extension_map_list->slot[map_id]->master_record);
+				ExpandRecord_v2( raw_record, extension_map_list->slot[map_id], r->exp_ref, flow_record);
 				flow_record->dPkts 		= r->counter[INPACKETS];
 				flow_record->dOctets 	= r->counter[INBYTES];
 				flow_record->out_pkts 	= r->counter[OUTPACKETS];
@@ -1370,7 +1472,7 @@ char				*string;
 
 } // End of PrintFlowTable
 
-void PrintFlowStat(char *record_header, printer_t print_record, int topN, int tag, int quiet, int cvs_output) {
+void PrintFlowStat(char *record_header, printer_t print_record, int topN, int tag, int quiet, int cvs_output, extension_map_list_t *extension_map_list) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 master_record_t		*aggr_record_mask;
@@ -1448,7 +1550,7 @@ uint32_t			maxindex, c;
 			printf("%s\n", record_header);
 	}
 
-	PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING);
+	PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING, extension_map_list);
 
 	// process all the remaining stats, if requested
 	for ( order_index++ ; order_index<NumOrders; order_index++ ) {
@@ -1474,7 +1576,7 @@ uint32_t			maxindex, c;
 				if ( !record_header ) 
 					printf("%s\n", record_header);
 			}
-			PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING);
+			PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING, extension_map_list);
 
 		}
 	}
@@ -1483,7 +1585,7 @@ uint32_t			maxindex, c;
 } // End of PrintFlowStat
 
 inline void PrintSortedFlowcache(SortElement_t *SortList, uint32_t maxindex, int limit_count, int GuessFlowDirection, 
-	printer_t print_record, int tag, int ascending ) {
+	printer_t print_record, int tag, int ascending, extension_map_list_t *extension_map_list ) {
 hash_FlowTable *FlowTable;
 master_record_t		*aggr_record_mask;
 int	i, max;
@@ -1508,10 +1610,10 @@ int	i, max;
 
 		r = (FlowTableRecord_t *)(SortList[j].record);
 		raw_record = &(r->flowrecord);
-		map_id = r->map_ref->map_id;
+		map_id = r->map_info_ref->map->map_id;
 
-		flow_record = &(extension_map_list.slot[map_id]->master_record);
-		ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
+		flow_record = &(extension_map_list->slot[map_id]->master_record);
+		ExpandRecord_v2( raw_record, extension_map_list->slot[map_id], r->exp_ref, flow_record);
 		flow_record->dPkts 		= r->counter[INPACKETS];
 		flow_record->dOctets 	= r->counter[INBYTES];
 		flow_record->out_pkts 	= r->counter[OUTPACKETS];

@@ -103,20 +103,24 @@ typedef struct sequence_map_s {
 #define move48  		5
 #define move56  		6
 #define move64  		7
-#define move128 		8
-#define move32_sampling 9
-#define move64_sampling 10
-#define move_mac		11
-#define move_mpls 		12
-#define move_ulatency	13
-#define move_slatency 	14
-#define Time64Mili 		15
-#define saveICMP 		16
-#define zero8			17
-#define zero16			18
-#define zero32			19
-#define zero64			20
-#define zero128			21
+#define move96  		8
+#define move128 		9
+#define move32_sampling 10
+#define move64_sampling 11
+#define move_mac		12
+#define move_mpls 		13
+#define move_ulatency	14
+#define move_slatency 	15
+#define move_user_20	16
+#define move_user_65	17
+#define TimeMsec 		18
+#define saveICMP 		19
+#define zero8			20
+#define zero16			21
+#define zero32			22
+#define zero64			23
+#define zero96			24
+#define zero128			25
 
 	uint32_t	id;				// sequence ID as defined above
 	uint16_t	input_offset;	// copy/process data at this input offset
@@ -137,6 +141,7 @@ typedef struct input_translation_s {
 //	uint64_t	flow_start;				// start time in msec
 //	uint64_t	flow_end;				// end time in msec
 	uint32_t	ICMP_offset;			// offset of ICMP type/code in data stream
+	uint64_t    EventTimeMsec;			// Event time in msec for NSEL/NEL
 	uint64_t    packets;				// total packets - sampling corrected
 	uint64_t    bytes;					// total bytes - sampling corrected
 	uint64_t    out_packets;			// total out packets - sampling corrected
@@ -196,6 +201,7 @@ typedef struct exporter_v9_domain_s {
 /* module limited globals */
 static struct v9_element_map_s {
 	uint16_t	id;			// v9 element id 
+	char		*name;		// name string
 	uint16_t	length;		// type of this element ( input length )
 	uint16_t	out_length;	// type of this element ( output length )
 	uint32_t	sequence;	// output length
@@ -204,101 +210,146 @@ static struct v9_element_map_s {
 } v9_element_map[] = {
 	{0, 0, 0},
 	// packets and bytes are always stored in 64bits
-	{ NF9_IN_BYTES, 			 _4bytes,  _8bytes, move32_sampling, zero64, COMMON_BLOCK },
-	{ NF9_IN_BYTES, 			 _8bytes,  _8bytes, move64_sampling, zero64, COMMON_BLOCK },
-	{ NF9_IN_PACKETS, 			 _4bytes,  _8bytes, move32_sampling, zero64, COMMON_BLOCK },
-	{ NF9_IN_PACKETS, 			 _8bytes,  _8bytes, move64_sampling, zero64, COMMON_BLOCK },
+	{ NF9_IN_BYTES, 			 "bytes",			_4bytes,  _8bytes, move32_sampling, zero64, COMMON_BLOCK },
+	{ NF9_IN_BYTES, 			 "bytes",			_8bytes,  _8bytes, move64_sampling, zero64, COMMON_BLOCK },
+	{ NF9_IN_PACKETS, 			 "packets",			_4bytes,  _8bytes, move32_sampling, zero64, COMMON_BLOCK },
+	{ NF9_IN_PACKETS, 			 "packets",			_8bytes,  _8bytes, move64_sampling, zero64, COMMON_BLOCK },
 
-	{ NF9_FLOWS_AGGR, 			 _4bytes,  _4bytes, move32, zero32, EX_AGGR_FLOWS_4 },
-	{ NF9_FLOWS_AGGR, 			 _8bytes,  _8bytes, move64, zero64, EX_AGGR_FLOWS_8 },
-	{ NF9_IN_PROTOCOL, 		 	 _1byte,   _1byte,  move8,  zero8, COMMON_BLOCK },
-	{ NF9_SRC_TOS, 		 	 	 _1byte,   _1byte,  move8,  zero8, COMMON_BLOCK },
-	{ NF9_TCP_FLAGS, 		  	 _1byte,   _1byte,  move8,  zero8, COMMON_BLOCK },
-	{ NF9_L4_SRC_PORT, 		 	 _2bytes,  _2bytes, move16, zero16, COMMON_BLOCK },
-	{ NF9_IPV4_SRC_ADDR,		 _4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
-	{ NF9_SRC_MASK, 	 		 _1byte,   _1byte,  move8, zero8, EX_MULIPLE },
-	{ NF9_INPUT_SNMP, 			 _2bytes,  _2bytes, move16, zero16, EX_IO_SNMP_2 },
-	{ NF9_INPUT_SNMP, 			 _4bytes,  _4bytes, move32, zero32, EX_IO_SNMP_4 },
-	{ NF9_L4_DST_PORT, 		 	 _2bytes,  _2bytes, move16, zero16, COMMON_BLOCK },
-	{ NF9_IPV4_DST_ADDR,		 _4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
-	{ NF9_DST_MASK, 	 		 _1byte,   _1byte,  move8, zero8, EX_MULIPLE },
-	{ NF9_OUTPUT_SNMP, 			 _2bytes,  _2bytes, move16, zero16, EX_IO_SNMP_2 },
-	{ NF9_OUTPUT_SNMP, 			 _4bytes,  _4bytes, move32, zero32, EX_IO_SNMP_4 },
-	{ NF9_V4_NEXT_HOP,		 	 _4bytes,  _4bytes, move32, zero32, EX_NEXT_HOP_v4 },
-	{ NF9_SRC_AS, 			 	 _2bytes,  _2bytes, move16, zero16, EX_AS_2 },
-	{ NF9_SRC_AS, 			 	 _4bytes,  _4bytes, move32, zero32, EX_AS_4 },
-	{ NF9_DST_AS, 			 	 _2bytes,  _2bytes, move16, zero16, EX_AS_2 },
-	{ NF9_DST_AS, 			 	 _4bytes,  _4bytes, move32, zero32, EX_AS_4 },
-	{ NF9_BGP_V4_NEXT_HOP,		 _4bytes,  _4bytes, move32, zero32, EX_NEXT_HOP_BGP_v4 },
-	{ NF9_LAST_SWITCHED, 		 _4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
-	{ NF9_FIRST_SWITCHED, 		 _4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
-	{ NF9_OUT_BYTES, 			 _4bytes,  _4bytes, move32_sampling, zero32, EX_OUT_BYTES_4 },
-	{ NF9_OUT_BYTES, 			 _8bytes,  _8bytes, move64_sampling, zero64, EX_OUT_BYTES_8 },
-	{ NF9_OUT_PKTS, 			 _4bytes,  _4bytes, move32_sampling, zero32, EX_OUT_PKG_4 },
-	{ NF9_OUT_PKTS, 			 _8bytes,  _8bytes, move64_sampling, zero64, EX_OUT_PKG_8 },
-	{ NF9_IPV6_SRC_ADDR,		 _16bytes, _16bytes, move128, zero128, COMMON_BLOCK },
-	{ NF9_IPV6_DST_ADDR,		 _16bytes, _16bytes, move128, zero128, COMMON_BLOCK },
-	{ NF9_IPV6_SRC_MASK, 	 	 _1byte,   _1byte,  move8, zero8, EX_MULIPLE },
-	{ NF9_IPV6_DST_MASK, 	 	 _1byte,   _1byte,  move8, zero8, EX_MULIPLE },
+	{ NF9_FLOWS_AGGR, 			 "flows",			_4bytes,  _4bytes, move32, zero32, EX_AGGR_FLOWS_4 },
+	{ NF9_FLOWS_AGGR, 			 "flows",			_8bytes,  _8bytes, move64, zero64, EX_AGGR_FLOWS_8 },
+	{ NF9_IN_PROTOCOL, 		 	 "proto",			_1byte,   _1byte,  move8,  zero8, COMMON_BLOCK },
+	{ NF9_SRC_TOS, 		 	 	 "tos",				_1byte,   _1byte,  move8,  zero8, COMMON_BLOCK },
+	{ NF9_TCP_FLAGS, 		  	 "flags",			_1byte,   _1byte,  move8,  zero8, COMMON_BLOCK },
+	{ NF9_L4_SRC_PORT, 		 	 "src port",		_2bytes,  _2bytes, move16, zero16, COMMON_BLOCK },
+	{ NF9_IPV4_SRC_ADDR,		 "V4 src addr",		_4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
+	{ NF9_SRC_MASK, 	 		 "V4 src mask",		_1byte,   _1byte,  move8, zero8, EX_MULIPLE },
+	{ NF9_INPUT_SNMP, 			 "input SNMP",		_2bytes,  _2bytes, move16, zero16, EX_IO_SNMP_2 },
+	{ NF9_INPUT_SNMP, 			 "input SNMP",		_4bytes,  _4bytes, move32, zero32, EX_IO_SNMP_4 },
+	{ NF9_L4_DST_PORT, 		 	 "dst port",		_2bytes,  _2bytes, move16, zero16, COMMON_BLOCK },
+	{ NF9_IPV4_DST_ADDR,		 "V4 dst addr",		_4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
+	{ NF9_DST_MASK, 	 		 "V4 dst mask",		_1byte,   _1byte,  move8, zero8, EX_MULIPLE },
+	{ NF9_OUTPUT_SNMP, 			 "output SNMP",		_2bytes,  _2bytes, move16, zero16, EX_IO_SNMP_2 },
+	{ NF9_OUTPUT_SNMP, 			 "output SNMP",		_4bytes,  _4bytes, move32, zero32, EX_IO_SNMP_4 },
+	{ NF9_V4_NEXT_HOP,		 	 "V4 next hop IP",	_4bytes,  _4bytes, move32, zero32, EX_NEXT_HOP_v4 },
+	{ NF9_SRC_AS, 			 	 "src AS",			_2bytes,  _2bytes, move16, zero16, EX_AS_2 },
+	{ NF9_SRC_AS, 			 	 "src AS",			_4bytes,  _4bytes, move32, zero32, EX_AS_4 },
+	{ NF9_DST_AS, 			 	 "dst AS",			_2bytes,  _2bytes, move16, zero16, EX_AS_2 },
+	{ NF9_DST_AS, 			 	 "dst AS",			_4bytes,  _4bytes, move32, zero32, EX_AS_4 },
+	{ NF9_BGP_V4_NEXT_HOP,		 "V4 BGP next hop",	_4bytes,  _4bytes, move32, zero32, EX_NEXT_HOP_BGP_v4 },
+	{ NF9_LAST_SWITCHED, 		 "last switched",	_4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
+	{ NF9_FIRST_SWITCHED, 		 "first switched",	_4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
+	{ NF9_OUT_BYTES, 			 "out bytes",		_4bytes,  _8bytes, move32_sampling, zero64, EX_OUT_BYTES_8 },
+	{ NF9_OUT_BYTES, 			 "out bytes",		_8bytes,  _8bytes, move64_sampling, zero64, EX_OUT_BYTES_8 },
+	{ NF9_OUT_PKTS, 			 "out packets",		_4bytes,  _8bytes, move32_sampling, zero64, EX_OUT_PKG_8 },
+	{ NF9_OUT_PKTS, 			 "out packets",		_8bytes,  _8bytes, move64_sampling, zero64, EX_OUT_PKG_8 },
+	{ NF9_IPV6_SRC_ADDR,		 "V6 src addr",		_16bytes, _16bytes, move128, zero128, COMMON_BLOCK },
+	{ NF9_IPV6_DST_ADDR,		 "V6 dst addr",		_16bytes, _16bytes, move128, zero128, COMMON_BLOCK },
+	{ NF9_IPV6_SRC_MASK, 	 	 "V6 src mask",		_1byte,   _1byte,  move8, zero8, EX_MULIPLE },
+	{ NF9_IPV6_DST_MASK, 	 	 "V6 dst mask",		_1byte,   _1byte,  move8, zero8, EX_MULIPLE },
 	/* XXX fix */
-	{ NF9_IPV6_FLOW_LABEL, 		 _4bytes,  _4bytes, nop, nop, COMMON_BLOCK },
+	{ NF9_IPV6_FLOW_LABEL, 		 "V6 flow label",	_4bytes,  _4bytes, nop, nop, COMMON_BLOCK },
 
-	{ NF9_ICMP_TYPE, 			 _2bytes,  _2bytes, nop, nop, COMMON_BLOCK },
+	{ NF9_ICMP_TYPE, 			 "ICMP type",		_2bytes,  _2bytes, nop, nop, COMMON_BLOCK },
 	// sampling
-	{ NF9_SAMPLING_INTERVAL, 	 _4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
-	{ NF9_SAMPLING_ALGORITHM,  	 _1byte,   _1byte, move8, zero8, COMMON_BLOCK },
+	{ NF9_SAMPLING_INTERVAL, 	 "sampling interval",	_4bytes,  _4bytes, move32, zero32, COMMON_BLOCK },
+	{ NF9_SAMPLING_ALGORITHM,  	 "sampling algorithm",	_1byte,   _1byte, move8, zero8, COMMON_BLOCK },
 
-	{ NF9_ENGINE_TYPE,  	 	 _1byte,   _1byte, move8, zero8, EX_ROUTER_ID },
-	{ NF9_ENGINE_ID,  	 	 	 _1byte,   _1byte, move8, zero8, EX_ROUTER_ID },
+	{ NF9_ENGINE_TYPE,  	 	 "engine type",		_1byte,   _1byte, move8, zero8, EX_ROUTER_ID },
+	{ NF9_ENGINE_ID,  	 	 	 "engine ID",		_1byte,   _1byte, move8, zero8, EX_ROUTER_ID },
 
 	// sampling
-	{ NF9_FLOW_SAMPLER_ID, 	 	 _1byte,   _1byte, nop, nop, COMMON_BLOCK },
-	{ NF9_FLOW_SAMPLER_ID, 	 	 _2bytes,  _2bytes, nop, nop, COMMON_BLOCK },
-	{ FLOW_SAMPLER_MODE, 	 	 _1byte,   _1byte, nop, nop, COMMON_BLOCK },
-	{ NF9_FLOW_SAMPLER_RANDOM_INTERVAL, _4bytes, _4bytes, nop, nop, COMMON_BLOCK },
+	{ NF9_FLOW_SAMPLER_ID, 	 	 "sampler ID",		_1byte,   _1byte, nop, nop, COMMON_BLOCK },
+	{ NF9_FLOW_SAMPLER_ID, 	 	 "sampler ID",		_2bytes,  _2bytes, nop, nop, COMMON_BLOCK },
+	{ FLOW_SAMPLER_MODE, 	 	 "sampler mode",	_1byte,   _1byte, nop, nop, COMMON_BLOCK },
+	{ NF9_FLOW_SAMPLER_RANDOM_INTERVAL, "sampler rand interval",		_4bytes, _4bytes, nop, nop, COMMON_BLOCK },
 
-	{ NF9_DST_TOS, 		 	 	 _1byte,   _1byte, move8,  zero8, COMMON_BLOCK },
+	{ NF9_DST_TOS, 		 	 	 "dst tos",			_1byte,   _1byte, move8,  zero8, COMMON_BLOCK },
 
-	{ NF9_IN_SRC_MAC, 			 _6bytes,  _8bytes, move_mac, zero64, EX_MAC_1},
-	{ NF9_OUT_DST_MAC, 	 		 _6bytes,  _8bytes, move_mac, zero64, EX_MAC_1},
+	{ NF9_IN_SRC_MAC, 			 "in src mac",		_6bytes,  _8bytes, move_mac, zero64, EX_MAC_1},
+	{ NF9_OUT_DST_MAC, 	 		 "out dst mac",		_6bytes,  _8bytes, move_mac, zero64, EX_MAC_1},
 
-	{ NF9_SRC_VLAN, 			 _2bytes,  _2bytes, move16, zero16, EX_VLAN}, 
-	{ NF9_DST_VLAN, 			 _2bytes,  _2bytes, move16, zero16, EX_VLAN},
+	{ NF9_SRC_VLAN, 			 "src vlan",		_2bytes,  _2bytes, move16, zero16, EX_VLAN}, 
+	{ NF9_DST_VLAN, 			 "dst vlan",		_2bytes,  _2bytes, move16, zero16, EX_VLAN},
 
-	{ NF9_DIRECTION, 	 	 	 _1byte,   _1byte,  move8, zero8, EX_MULIPLE },
+	{ NF9_DIRECTION, 	 	 	 "direction",		_1byte,   _1byte,  move8, zero8, EX_MULIPLE },
 
-	{ NF9_V6_NEXT_HOP,			 _16bytes, _16bytes, move128, zero128, EX_NEXT_HOP_v6 },
-	{ NF9_BPG_V6_NEXT_HOP,	 	 _16bytes, _16bytes, move128, zero128, EX_NEXT_HOP_BGP_v6 },
+	{ NF9_V6_NEXT_HOP,			 "V6 next hop IP",	_16bytes, _16bytes, move128, zero128, EX_NEXT_HOP_v6 },
+	{ NF9_BPG_V6_NEXT_HOP,	 	 "V6 BGP next hop",	_16bytes, _16bytes, move128, zero128, EX_NEXT_HOP_BGP_v6 },
 
 	// mpls
-	{ NF9_MPLS_LABEL_1, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_2, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_3, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_4, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_5, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_6, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_7, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_8, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_9, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
-	{ NF9_MPLS_LABEL_10, 	 	 _3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_1, 	 	 "mpls label 1",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_2, 	 	 "mpls label 2",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_3, 	 	 "mpls label 3",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_4, 	 	 "mpls label 4",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_5, 	 	 "mpls label 5",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_6, 	 	 "mpls label 6",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_7, 	 	 "mpls label 7",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_8, 	 	 "mpls label 8",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_9, 	 	 "mpls label 9",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
+	{ NF9_MPLS_LABEL_10, 	 	 "mpls label 10",	_3bytes,  _4bytes, move_mpls, zero32, EX_MPLS},
 
-	{ NF9_IN_DST_MAC, 		 	 _6bytes,  _8bytes, move_mac, zero64, EX_MAC_2},
-	{ NF9_OUT_SRC_MAC, 		 	 _6bytes,  _8bytes, move_mac, zero64, EX_MAC_2},
+	{ NF9_IN_DST_MAC, 		 	 "in dst mac",		_6bytes,  _8bytes, move_mac, zero64, EX_MAC_2},
+	{ NF9_OUT_SRC_MAC, 		 	 "out src mac",		_6bytes,  _8bytes, move_mac, zero64, EX_MAC_2},
 
-	{ NF9_FORWARDING_STATUS, 	 _1byte,   _1byte, move8, zero8, COMMON_BLOCK },
+	{ NF9_FORWARDING_STATUS, 	 "fwd status",		_1byte,   _1byte, move8, zero8, COMMON_BLOCK },
+	{ NF9_BGP_ADJ_NEXT_AS, 	 	 "BGP next AS",		_4bytes,  _4bytes, move32, zero32, EX_BGPADJ },
+	{ NF9_BGP_ADJ_PREV_AS, 	 	 "BGP prev AS",		_4bytes,  _4bytes, move32, zero32, EX_BGPADJ },
+
+	// NSEL ASA extension
+	// NSEL common
+	{ NF_F_EVENT_TIME_MSEC,		"ASA event time",		_8bytes, _8bytes, TimeMsec, nop, COMMON_BLOCK },
+	{ NF_F_CONN_ID, 	 		"ASA conn ID",			_4bytes, _4bytes, move32, zero32, EX_NSEL_COMMON },
+	{ NF_F_FW_EVENT84, 		 	"ASA event 84",			_1byte,  _1byte,  move8,  zero8,  EX_NSEL_COMMON },
+	{ NF_F_FW_EVENT, 		 	"ASA event",			_1byte,  _1byte,  move8,  zero8,  EX_NSEL_COMMON },
+	{ NF_F_FW_EXT_EVENT, 		"ASA ext event",		_2bytes, _2bytes, move16, zero16, EX_NSEL_COMMON },
+	{ NF_F_ICMP_TYPE, 			"ASA ICMP type",		_1byte, _1byte,  move8,  zero8,  EX_NSEL_COMMON },
+	{ NF_F_ICMP_CODE, 			"ASA ICMP code",		_1byte, _1byte,  move8,  zero8,  EX_NSEL_COMMON },
+	{ NF_F_ICMP_TYPE_IPV6, 		"ASA ICMP type V6",		_1byte, _1byte,  move8,  zero8,  EX_NSEL_COMMON },
+	{ NF_F_ICMP_CODE_IPV6, 		"ASA ICMP code V6",		_1byte, _1byte,  move8,  zero8,  EX_NSEL_COMMON },
+	{ NF_F_FLOW_CREATE_TIME_MSEC, "ASA flow create",	_8bytes,  _8bytes, move64, zero64, EX_NSEL_COMMON },
+	// XlATE extensions
+	{ NF_F_XLATE_SRC_ADDR_IPV4, "ASA V4 xsrc addr",		_4bytes,  _4bytes,  move32,  zero32,  EX_NSEL_XLATE_IP_v4 },
+	{ NF_F_XLATE_DST_ADDR_IPV4, "ASA V4 xdst addr",		_4bytes,  _4bytes,  move32,  zero32,  EX_NSEL_XLATE_IP_v4 },
+//	{ NF_F_XLATE_SRC_ADDR_IPV6, "ASA V6 xsrc addr",		_16bytes, _16bytes, move128, zero128, EX_NSEL_XLATE_IP_v6 },
+//	{ NF_F_XLATE_DST_ADDR_IPV6, "ASA V6 xdst addr",		_16bytes, _16bytes, move128, zero128, EX_NSEL_XLATE_IP_v6 },
+	{ NF_F_XLATE_SRC_PORT, 		"ASA xsrc port",		_2bytes,  _2bytes,  move16,  zero16,  EX_NSEL_XLATE_PORTS },
+	{ NF_F_XLATE_DST_PORT, 		"ASA xdst port",		_2bytes,  _2bytes,  move16,  zero16,  EX_NSEL_XLATE_PORTS },
+	// ACL extension
+	{ NF_F_INGRESS_ACL_ID, 		"ASA ingress ACL",		_12bytes,  _12bytes, move96, zero96, EX_NSEL_ACL },
+	{ NF_F_EGRESS_ACL_ID, 		"ASA egress ACL",		_12bytes,  _12bytes, move96, zero96, EX_NSEL_ACL },
+	// byte count
+	{ NF_F_FLOW_BYTES, 			 "ASA bytes",			_4bytes,  _8bytes, move32_sampling, zero64, EX_NSEL_COMMON },
+	{ NF_F_FLOW_BYTES, 			 "ASA bytes",			_8bytes,  _8bytes, move64_sampling, zero64, EX_NSEL_COMMON },
+	{ NF_F_FWD_FLOW_DELTA_BYTES, "ASA fwd bytes",		_4bytes,  _8bytes, move32_sampling, zero64, EX_NSEL_COMMON },
+	{ NF_F_FWD_FLOW_DELTA_BYTES, "ASA fwd bytes",		_8bytes,  _8bytes, move64_sampling, zero64, EX_NSEL_COMMON },
+	{ NF_F_REV_FLOW_DELTA_BYTES,  "ASA rew bytes",		_4bytes,  _4bytes, move32_sampling, zero32, EX_OUT_BYTES_4 },
+	{ NF_F_REV_FLOW_DELTA_BYTES,  "ASA rew bytes",		_8bytes,  _8bytes, move64_sampling, zero64, EX_OUT_BYTES_8 },
+	// NSEL user names
+	{ NF_F_USERNAME, 			 "ASA user name 20",	_20bytes,  _24bytes, move_user_20, zero32, EX_NSEL_USER },
+	{ NF_F_USERNAME, 			 "ASA user name 65",	_65bytes,  _72bytes, move_user_65, zero32, EX_NSEL_USER_MAX },
+
+	// NEL CISCO ASR 1000 series NAT logging
+	// NEL COMMON extension
+	{ NF_F_EVENT_TIME_MSEC,			"NEL event time",		_8bytes, _8bytes, TimeMsec, nop, 	COMMON_BLOCK },
+	{ NF_N_NAT_EVENT, 		 		"NEL NAT event",		_1byte,  _1byte,  move8,  	zero8,  EX_NEL_COMMON },
+	{ NF_N_POST_NAPT_SRC_PORT,		"NEL xsrc port",		_2bytes, _2bytes, move16,  	zero16, EX_NEL_COMMON },
+	{ NF_N_POST_NAPT_DST_PORT, 		"NEL xdst port",		_2bytes, _2bytes, move16,  	zero16, EX_NEL_COMMON },
+	{ NF_N_INGRESS_VRFID, 	 		"NEL ingress VRFID",	_4bytes, _4bytes, move32, 	zero32, EX_NEL_COMMON },
+	// NEL GLOBAL IP extensions
+	{ NF_N_NAT_INSIDE_GLOBAL_IPV4, 	"NEL V4 inside IP",		_4bytes,  _4bytes,  move32,  zero32,  EX_NEL_GLOBAL_IP_v4 },
+	{ NF_N_NAT_OUTSIDE_GLOBAL_IPV4, "NEL V4 outside IP",	_4bytes,  _4bytes,  move32,  zero32,  EX_NEL_GLOBAL_IP_v4 },
+//	{ NF_N_NAT_INSIDE_GLOBAL_IPV6,	"NEL V6 inside IP",		_16bytes, _16bytes, move128, zero128, EX_NEL_GLOBAL_IP_v6 },
+//	{ NF_N_NAT_OUTSIDE_GLOBAL_IPV6, "NEL V6 outside IP",	_16bytes, _16bytes, move128, zero128, EX_NEL_GLOBAL_IP_v6 },
 
 	// nprobe latency extension
-	{ NF9_NPROBE_CLIENT_NW_DELAY_USEC, 	 _4bytes, _8bytes, move_ulatency, zero64, EX_LATENCY },
-	{ NF9_NPROBE_SERVER_NW_DELAY_USEC, 	 _4bytes, _8bytes, move_ulatency, zero64, EX_LATENCY },
-	{ NF9_NPROBE_APPL_LATENCY_USEC, 	 _4bytes, _8bytes, move_ulatency, zero64, EX_LATENCY },
-	{ NF9_NPROBE_CLIENT_NW_DELAY_SEC, 	 _4bytes, _8bytes, move_slatency, nop, EX_LATENCY },
-	{ NF9_NPROBE_SERVER_NW_DELAY_SEC, 	 _4bytes, _8bytes, move_slatency, nop, EX_LATENCY },
-	{ NF9_NPROBE_APPL_LATENCY_SEC, 	 	 _4bytes, _8bytes, move_slatency, nop, EX_LATENCY },
+	{ NF9_NPROBE_CLIENT_NW_DELAY_USEC, 	 "NPROBE client lat usec",	_4bytes, _8bytes, move_ulatency, zero64, EX_LATENCY },
+	{ NF9_NPROBE_SERVER_NW_DELAY_USEC, 	 "NPROBE server lat usec",	_4bytes, _8bytes, move_ulatency, zero64, EX_LATENCY },
+	{ NF9_NPROBE_APPL_LATENCY_USEC, 	 "NPROBE appl lat usec",	_4bytes, _8bytes, move_ulatency, zero64, EX_LATENCY },
+	{ NF9_NPROBE_CLIENT_NW_DELAY_SEC, 	 "NPROBE client lat sec",	_4bytes, _8bytes, move_slatency, nop, EX_LATENCY },
+	{ NF9_NPROBE_SERVER_NW_DELAY_SEC, 	 "NPROBE server lat sec",	_4bytes, _8bytes, move_slatency, nop, EX_LATENCY },
+	{ NF9_NPROBE_APPL_LATENCY_SEC, 	 	 "NPROBE appl lat sec",		_4bytes, _8bytes, move_slatency, nop, EX_LATENCY },
 
-	{ NF9_BGP_ADJ_NEXT_AS, 			 	 _4bytes,  _4bytes, move32, zero32, EX_BGPADJ },
-	{ NF9_BGP_ADJ_PREV_AS, 			 	 _4bytes,  _4bytes, move32, zero32, EX_BGPADJ },
-
-	{0, 0, 0}
+	{0, "NULL",	0, 0}
 };
 
 /* 
@@ -481,9 +532,9 @@ int	index;
 				cache.lookup_info[Type].offset = Offset;
 				cache.lookup_info[Type].length = Length;
 				cache.lookup_info[Type].index  = index;
-				dbg_printf("found extension %u for type: %u, input length: %u output length: %u Extension: %u\n", 
-					v9_element_map[index].extension, v9_element_map[index].id, 
-					v9_element_map[index].length, v9_element_map[index].out_length, v9_element_map[index].extension);
+				dbg_printf("found extension %u for type: %u(%s), at index: %i, input length: %u output length: %u Extension: %u, Offset: %u\n", 
+					v9_element_map[index].extension, v9_element_map[index].id, v9_element_map[index].name, index,
+					v9_element_map[index].length, v9_element_map[index].out_length, v9_element_map[index].extension, Offset);
 				return v9_element_map[index].extension;
 			} 
 			index++;
@@ -512,7 +563,8 @@ input_translation_t *table;
 		table = table->next;
 	}
 
-	dbg_printf("[%u] Get translation table %u: %s\n", exporter->info.id, id, table == NULL ? "not found" : "found");
+	dbg_printf("[%u/%u] Get translation table %u: %s\n", 
+		exporter->info.id, exporter->info.sysid, id, table == NULL ? "not found" : "found");
 
 	exporter->current_table = table;
 	return table;
@@ -529,9 +581,9 @@ input_translation_t **table;
 
 	// Allocate enough space for all potential v9 tags, which we support in v9_element_map
 	// so template refreshing may change the table size without danger of overflowing 
-	*table = malloc(sizeof(input_translation_t));
+	*table = calloc(1, sizeof(input_translation_t));
 	if ( !(*table) ) {
-			syslog(LOG_ERR, "Process_v9: Panic! malloc() %s line %d: %s", __FILE__, __LINE__, strerror (errno));
+			syslog(LOG_ERR, "Process_v9: Panic! calloc() %s line %d: %s", __FILE__, __LINE__, strerror (errno));
 			return NULL;
 	}
 	(*table)->sequence = calloc(cache.max_v9_elements, sizeof(sequence_map_t));
@@ -566,11 +618,13 @@ uint32_t index = cache.lookup_info[Type].index;
 			table->sequence[i].input_offset  = cache.lookup_info[Type].offset;
 			table->sequence[i].output_offset = *offset;
 			table->sequence[i].stack = stack;
+			dbg_printf("Fill ");
 	} else {
 			table->sequence[i].id = v9_element_map[index].zero_sequence;
 			table->sequence[i].input_offset  = 0;
 			table->sequence[i].output_offset = *offset;
 			table->sequence[i].stack = NULL;
+			dbg_printf("Zero ");
 	}
 	dbg_printf("Push: sequence: %u, Type: %u, length: %u, out length: %u, id: %u, in offset: %u, out offset: %u\n",
 		i, Type, v9_element_map[index].length, v9_element_map[index].out_length, table->sequence[i].id, 
@@ -592,6 +646,7 @@ size_t				size_required;
 	table = GetTranslationTable(exporter, id);
 	if ( !table ) {
 		syslog(LOG_INFO, "Process_v9: [%u] Add template %u", exporter->info.id, id);
+		dbg_printf("[%u] Add template %u\n", exporter->info.id, id);
 		table = add_translation_table(exporter, id);
 		if ( !table ) {
 			return NULL;
@@ -608,7 +663,7 @@ size_t				size_required;
 			return  NULL;
 		}
 		extension_map->type 	   = ExtensionMapType;
-		// Set size to an empty tablee - will be adapted later
+		// Set size to an empty table - will be updated later
 		extension_map->size 	   = sizeof(extension_map_t);
 		extension_map->map_id 	   = INIT_ID;
 		// packed record size still unknown at this point - will be added later
@@ -616,6 +671,13 @@ size_t				size_required;
 
 		table->extension_info.map 	 = extension_map;
 		table->extension_map_changed = 1;
+#ifdef DEVEL
+		if ( !GetTranslationTable(exporter, id) ) {
+			printf("*** ERROR failed to crosscheck translation table\n");
+		} else {
+			printf("table lookup ok!\n");
+		}
+#endif
  	} else {
 		extension_map = table->extension_info.map;
 
@@ -625,8 +687,8 @@ size_t				size_required;
 
 		dbg_printf("[%u] Refresh template %u\n", exporter->info.id, id);
 
-		// very noisy with somee exporters
-		// syslog(LOG_DEBUG, "Process_v9: [%u] Refresh template %u", exporter->info.id, id);
+		// very noisy for some exporters
+		dbg_printf("[%u] Refresh template %u\n", exporter->info.id, id);
 	}
 	// clear current table
 	memset((void *)table->sequence, 0, cache.max_v9_elements * sizeof(sequence_map_t));
@@ -634,6 +696,7 @@ size_t				size_required;
 
 	table->updated  		= time(NULL);
 	table->flags			= 0;
+	table->EventTimeMsec	= 0;
 	table->ICMP_offset		= 0;
 	table->sampler_offset 	= 0;
 	table->sampler_size		= 0;
@@ -653,6 +716,11 @@ size_t				size_required;
 
 	// All required extensions
 	offset = BYTE_OFFSET_first;
+	if ( cache.lookup_info[NF_F_EVENT_TIME_MSEC].found ) {
+		uint32_t _tmp = 0;
+		PushSequence( table, NF_F_EVENT_TIME_MSEC, &_tmp, &table->EventTimeMsec);
+		dbg_printf("Push NF_F_EVENT_TIME_MSEC\n");
+	}
 	PushSequence( table, NF9_FIRST_SWITCHED, &offset, NULL);
 	offset = BYTE_OFFSET_first + 4;
 	PushSequence( table, NF9_LAST_SWITCHED, &offset, NULL);
@@ -679,7 +747,7 @@ size_t				size_required;
 		PushSequence( table, NF9_IPV6_SRC_ADDR, &offset, NULL);
 		PushSequence( table, NF9_IPV6_DST_ADDR, &offset, NULL);
 		// mark IPv6 
-		table->flags	|= FLAG_IPV6_ADDR;
+		SetFlag(table->flags, FLAG_IPV6_ADDR);
 		ipv6 = 1;
 	} else {
 		// should not happen, assume empty IPv4 addresses
@@ -695,9 +763,24 @@ size_t				size_required;
 	// fix: always have 64bit counters due to possible sampling
 	SetFlag(table->flags, FLAG_PKG_64);
 
-	PushSequence( table, NF9_IN_BYTES, &offset, &table->bytes);
+	if ( cache.lookup_info[NF_F_FLOW_BYTES].found ) {
+		// NSEL ASA bytes
+		PushSequence( table, NF_F_FLOW_BYTES, &offset, &table->bytes);
+	} else if ( cache.lookup_info[NF_F_FWD_FLOW_DELTA_BYTES].found ) {
+		// NSEL ASA 8.4 bytes
+		PushSequence( table, NF_F_FWD_FLOW_DELTA_BYTES, &offset, &table->bytes);
+	} else {
+		PushSequence( table, NF9_IN_BYTES, &offset, &table->bytes);
+	}
 	// fix: always have 64bit counters due to possible sampling
 	SetFlag(table->flags, FLAG_BYTES_64);
+
+#if defined NSEL || defined NEL
+	if ( cache.lookup_info[NF_F_FW_EVENT].found || cache.lookup_info[NF_F_FW_EVENT84].found || 
+		 cache.lookup_info[NF_N_NAT_EVENT].found) {
+		SetFlag(table->flags, FLAG_EVENT);
+	}
+#endif
 
 	// Optional extensions
 	next_extension = 0;
@@ -762,10 +845,18 @@ size_t				size_required;
 				PushSequence( table, NF9_OUT_PKTS, &offset, &table->out_packets);
 				break;
 			case EX_OUT_BYTES_4:
-				PushSequence( table, NF9_OUT_BYTES, &offset, &table->out_bytes);
+				if ( cache.lookup_info[NF_F_REV_FLOW_DELTA_BYTES].found ) {
+					PushSequence( table, NF_F_REV_FLOW_DELTA_BYTES, &offset, &table->out_bytes);
+				} else {
+					PushSequence( table, NF9_OUT_BYTES, &offset, &table->out_bytes);
+				}
 				break;
 			case EX_OUT_BYTES_8:
-				PushSequence( table, NF9_OUT_BYTES, &offset, &table->out_bytes);
+				if ( cache.lookup_info[NF_F_REV_FLOW_DELTA_BYTES].found ) {
+					PushSequence( table, NF_F_REV_FLOW_DELTA_BYTES, &offset, &table->out_bytes);
+				} else {
+					PushSequence( table, NF9_OUT_BYTES, &offset, &table->out_bytes);
+				}
 				break;
 			case EX_AGGR_FLOWS_4:
 				PushSequence( table, NF9_FLOWS_AGGR, &offset, NULL);
@@ -870,6 +961,72 @@ size_t				size_required;
 				PushSequence( table, NF9_BGP_ADJ_NEXT_AS, &offset, NULL);
 				PushSequence( table, NF9_BGP_ADJ_PREV_AS, &offset, NULL);
 				break;
+			case EX_NSEL_COMMON:
+				PushSequence( table, NF_F_FLOW_CREATE_TIME_MSEC, &offset, NULL);
+				PushSequence( table, NF_F_CONN_ID, &offset, NULL);
+				if ( ipv6 ) {
+#ifdef WORDS_BIGENDIAN
+					PushSequence( table, NF_F_ICMP_TYPE_IPV6, &offset, NULL);
+					PushSequence( table, NF_F_ICMP_CODE_IPV6, &offset, NULL);
+#else
+					PushSequence( table, NF_F_ICMP_CODE_IPV6, &offset, NULL);
+					PushSequence( table, NF_F_ICMP_TYPE_IPV6, &offset, NULL);
+#endif
+				} else {
+#ifdef WORDS_BIGENDIAN
+					PushSequence( table, NF_F_ICMP_TYPE, &offset, NULL);
+					PushSequence( table, NF_F_ICMP_CODE, &offset, NULL);
+#else
+					PushSequence( table, NF_F_ICMP_CODE, &offset, NULL);
+					PushSequence( table, NF_F_ICMP_TYPE, &offset, NULL);
+#endif
+				}
+				cache.lookup_info[NF_F_FW_EVENT84].found ?
+					PushSequence( table, NF_F_FW_EVENT84, &offset, NULL) :
+					PushSequence( table, NF_F_FW_EVENT, &offset, NULL);
+				offset += 1;
+				PushSequence( table, NF_F_FW_EXT_EVENT, &offset, NULL);
+				offset += 2;
+				break;
+			case EX_NSEL_XLATE_PORTS:
+				PushSequence( table, NF_F_XLATE_SRC_PORT, &offset, NULL);
+				PushSequence( table, NF_F_XLATE_DST_PORT, &offset, NULL);
+				break;
+			case EX_NSEL_XLATE_IP_v4:
+				PushSequence( table, NF_F_XLATE_SRC_ADDR_IPV4, &offset, NULL);
+				PushSequence( table, NF_F_XLATE_DST_ADDR_IPV4, &offset, NULL);
+				break;
+/* not yet implemeted by CISCO
+			case EX_NSEL_XLATE_IP_v6:
+				PushSequence( table, NF_F_XLATE_SRC_ADDR_IPV6, &offset, NULL);
+				PushSequence( table, NF_F_XLATE_DST_ADDR_IPV6, &offset, NULL);
+				break;
+*/
+			case EX_NSEL_ACL:
+				PushSequence( table, NF_F_INGRESS_ACL_ID, &offset, NULL);
+				PushSequence( table, NF_F_EGRESS_ACL_ID, &offset, NULL);
+				break;
+			case EX_NSEL_USER:
+			case EX_NSEL_USER_MAX:
+				PushSequence( table, NF_F_USERNAME, &offset, NULL);
+				break;
+			case EX_NEL_COMMON:
+				PushSequence( table, NF_N_NAT_EVENT, &offset, NULL);
+				offset += 3;
+				PushSequence( table, NF_N_POST_NAPT_SRC_PORT, &offset, NULL);
+				PushSequence( table, NF_N_POST_NAPT_DST_PORT, &offset, NULL);
+				PushSequence( table, NF_N_INGRESS_VRFID, &offset, NULL);
+				break;
+			case EX_NEL_GLOBAL_IP_v4:
+				PushSequence( table, NF_N_NAT_INSIDE_GLOBAL_IPV4, &offset, NULL);
+				PushSequence( table, NF_N_NAT_OUTSIDE_GLOBAL_IPV4, &offset, NULL);
+				break;
+/* not yet implemeted by CISCO
+			case EX_NEL_GLOBAL_IP_v6:
+				PushSequence( table, NF_N_NAT_INSIDE_GLOBAL_IPV6, &offset, NULL);
+				PushSequence( table, NF_N_NAT_OUTSIDE_GLOBAL_IPV6, &offset, NULL);
+				break;
+*/
 		}
 		extension_map->size += sizeof(uint16_t);
 		extension_map->extension_size += extension_descriptor[map_index].size;
@@ -885,13 +1042,13 @@ size_t				size_required;
 
 	}
 	extension_map->ex_id[next_extension++] = 0;
-
-	// make sure map is aligned
-	if ( extension_map->size & 0x3 ) {
-		extension_map->ex_id[next_extension] = 0;
-		extension_map->size = ( extension_map->size + 3 ) &~ 0x3;
-	}
-
+ 
+    // make sure map is aligned
+    if ( extension_map->size & 0x3 ) {
+        extension_map->ex_id[next_extension] = 0;
+        extension_map->size = ( extension_map->size + 3 ) &~ 0x3;
+    }
+ 
 	table->output_record_size = offset;
 	table->input_record_size  = input_record_size;
 
@@ -900,7 +1057,7 @@ size_t				size_required;
 	// remember offset, for decoding
 	if ( cache.lookup_info[NF9_ICMP_TYPE].found && cache.lookup_info[NF9_ICMP_TYPE].length == 2 ) {
 		table->ICMP_offset = cache.lookup_info[NF9_ICMP_TYPE].offset;
-	}
+	} 
 
 	/* Sampler ID */
 	if ( cache.lookup_info[NF9_FLOW_SAMPLER_ID].found ) {
@@ -1082,6 +1239,7 @@ int			i;
 			if ( ext_id && extension_descriptor[ext_id].enabled ) {
 				if ( cache.common_extensions[ext_id] == 0 ) {
 					cache.common_extensions[ext_id] = 1;
+					dbg_printf("Enable extension: %2i: %s\n", ext_id, extension_descriptor[ext_id].description);
 					num_extensions++;
 				}
 			} 
@@ -1117,6 +1275,7 @@ int			i;
 		}
 	
 		dbg_printf("Parsed %u v9 tags, total %u extensions\n", num_v9tags, num_extensions);
+
 
 #ifdef DEVEL
 		{
@@ -1273,7 +1432,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 
 static inline void Process_v9_data(exporter_v9_domain_t *exporter, void *data_flowset, FlowSource_t *fs, input_translation_t *table ){
 uint64_t			start_time, end_time, sampling_rate;
-uint32_t			size_left, First, Last;
+uint32_t			size_left;
 uint8_t				*in, *out;
 int					i;
 char				*string;
@@ -1285,6 +1444,11 @@ char				*string;
 
 	dbg_printf("[%u] Process data flowset size: %u\n", exporter->info.id, size_left);
 
+	if ( table->sampler_offset ) 
+		dbg_printf("table sampler offset: %u\n", table->sampler_offset);
+	dbg_printf("[%u] Exporter is 0x%llu\n", exporter->info.id, (long long unsigned)exporter);
+	dbg_printf("[%u] Exporter has sampler: %s\n", exporter->info.id, exporter->sampler ? "yes" : "no");
+
 	// Check if sampling is announced
 	if ( table->sampler_offset && exporter->sampler  ) {
 		generic_sampler_t *sampler = exporter->sampler;
@@ -1294,7 +1458,7 @@ char				*string;
 		} else {
 			sampler_id = in[table->sampler_offset];
 		}
-printf("Extract sampler: %u\n", sampler_id);
+		dbg_printf("Extract sampler: %u\n", sampler_id);
 		// usually not that many samplers, so following a chain is not too expensive.
 		while ( sampler && sampler->info.id != sampler_id ) 
 			sampler = sampler->next;
@@ -1372,6 +1536,8 @@ printf("Extract sampler: %u\n", sampler_id);
 
 		table->packets 		  	    = 0;
 		table->bytes 		  	    = 0;
+		table->out_packets 	  	    = 0;
+		table->out_bytes 	  	    = 0;
 
 		// apply copy and processing sequence
 		for ( i=0; i<table->number_of_sequences; i++ ) {
@@ -1422,6 +1588,11 @@ printf("Extract sampler: %u\n", sampler_id);
 
 						*((uint32_t *)&out[output_offset]) 	 = t.val.val32[0];
 						*((uint32_t *)&out[output_offset+4]) = t.val.val32[1];
+					} break;
+				case move96: 
+					{   *((uint32_t *)&out[output_offset]) = Get_val32((void *)&in[input_offset]);
+						*((uint32_t *)&out[output_offset+4]) = Get_val32((void *)&in[input_offset+4]);
+						*((uint32_t *)&out[output_offset+8]) = Get_val32((void *)&in[input_offset+8]);
 					} break;
 				case move128: 
 					/* 64bit access to potentially unaligned output buffer. use 2 x 32bit for _LP64 CPUs */
@@ -1487,7 +1658,15 @@ printf("Extract sampler: %u\n", sampler_id);
 						*((uint32_t *)&out[output_offset])   = t.val.val32[0];
 						*((uint32_t *)&out[output_offset+4]) = t.val.val32[1];
 					} break;
-				case Time64Mili:
+				case move_user_20:
+					memcpy((void *)&out[output_offset],(void *)&in[input_offset],20);
+					out[output_offset+20] = 0;	// trailing 0 for string
+					break;
+				case move_user_65:
+					memcpy((void *)&out[output_offset],(void *)&in[input_offset],65);
+					out[output_offset+65] = 0;	// trailing 0 for string
+					break;
+				case TimeMsec:
 					{ uint64_t DateMiliseconds = Get_val64((void *)&in[input_offset]);
 					  *(uint64_t *)stack = DateMiliseconds;
 
@@ -1506,6 +1685,11 @@ printf("Extract sampler: %u\n", sampler_id);
 				case zero64: 
 						*((uint64_t *)&out[output_offset]) = 0;
 					 break;
+				case zero96: 
+					{   *((uint32_t *)&out[output_offset])   = 0;
+						*((uint32_t *)&out[output_offset+4]) = 0;
+						*((uint32_t *)&out[output_offset+8]) = 0;
+					} break;
 				case zero128: 
 						*((uint64_t *)&out[output_offset]) = 0;
 						*((uint64_t *)&out[output_offset+8]) = 0;
@@ -1533,26 +1717,47 @@ printf("Extract sampler: %u\n", sampler_id);
 			}
 		}
 
-		First = data_record->first;
-		Last  = data_record->last;
+		// Check for NSEL/NEL Event time
+		if ( table->EventTimeMsec ) {
+			data_record->first 		= table->EventTimeMsec / 1000;
+			data_record->msec_first = table->EventTimeMsec % 1000;
+			data_record->last 		= data_record->first;
+			data_record->msec_last	= data_record->msec_first;
+			start_time = table->EventTimeMsec;
+			end_time   = table->EventTimeMsec;
+			dbg_printf("Found Event Time MSEC: %llu\n",  table->EventTimeMsec);
+		} else if ( data_record->first == 0 && data_record->last == 0 ) {
+			// hmm - a record with no time at all ..
+			data_record->first 		= 0;
+			data_record->msec_last	= 0;
+			start_time = 0;
+			end_time   = 0;
+		} else {
+			uint32_t First = data_record->first;
+			uint32_t Last  = data_record->last;
 
-		if ( First > Last )
-			/* First in msec, in case of msec overflow, between start and end */
-			start_time = exporter->boot_time - 0x100000000LL + (uint64_t)First;
-		else
-			start_time = (uint64_t)First + exporter->boot_time;
-
-		/* end time in msecs */
-		end_time = (uint64_t)Last + exporter->boot_time;
-
-		data_record->first 		= start_time/1000;
-		data_record->msec_first	= start_time - data_record->first*1000;
+			if ( First > Last )
+				/* First in msec, in case of msec overflow, between start and end */
+				start_time = exporter->boot_time - 0x100000000LL + (uint64_t)First;
+			else
+				start_time = (uint64_t)First + exporter->boot_time;
 	
-		data_record->last 		= end_time/1000;
-		data_record->msec_last	= end_time - data_record->last*1000;
-
-		if ( data_record->first == 0 && data_record->last == 0 )
-			data_record->last = 0;
+			/* end time in msecs */
+			end_time = (uint64_t)Last + exporter->boot_time;
+	
+			if ( (end_time - start_time) > 0xffc00000 && table->bytes < 2000 ) {
+				dbg_printf("CISCO bugfix!\n");
+				start_time += 0xffc00000;
+			}
+			data_record->first 		= start_time/1000;
+			data_record->msec_first	= start_time - data_record->first*1000;
+		
+			data_record->last 		= end_time/1000;
+			data_record->msec_last	= end_time - data_record->last*1000;
+	
+			if ( data_record->first == 0 && data_record->last == 0 )
+				data_record->last = 0;
+		}
 
 		// update first_seen, last_seen
 		if ( start_time < fs->first_seen )
@@ -1602,26 +1807,36 @@ printf("Extract sampler: %u\n", sampler_id);
 				fs->nffile->stat_record->numflows_icmp++;
 				fs->nffile->stat_record->numpackets_icmp  += table->packets;
 				fs->nffile->stat_record->numbytes_icmp    += table->bytes;
+				fs->nffile->stat_record->numpackets_icmp  += table->out_packets;
+				fs->nffile->stat_record->numbytes_icmp    += table->out_bytes;
 				break;
 			case IPPROTO_TCP:
 				fs->nffile->stat_record->numflows_tcp++;
 				fs->nffile->stat_record->numpackets_tcp   += table->packets;
 				fs->nffile->stat_record->numbytes_tcp     += table->bytes;
+				fs->nffile->stat_record->numpackets_tcp   += table->out_packets;
+				fs->nffile->stat_record->numbytes_tcp     += table->out_bytes;
 				break;
 			case IPPROTO_UDP:
 				fs->nffile->stat_record->numflows_udp++;
 				fs->nffile->stat_record->numpackets_udp   += table->packets;
 				fs->nffile->stat_record->numbytes_udp     += table->bytes;
+				fs->nffile->stat_record->numpackets_udp   += table->out_packets;
+				fs->nffile->stat_record->numbytes_udp     += table->out_bytes;
 				break;
 			default:
 				fs->nffile->stat_record->numflows_other++;
 				fs->nffile->stat_record->numpackets_other += table->packets;
 				fs->nffile->stat_record->numbytes_other   += table->bytes;
+				fs->nffile->stat_record->numpackets_other += table->out_packets;
+				fs->nffile->stat_record->numbytes_other   += table->out_bytes;
 		}
 		exporter->flows++;
 		fs->nffile->stat_record->numflows++;
 		fs->nffile->stat_record->numpackets	+= table->packets;
 		fs->nffile->stat_record->numbytes	+= table->bytes;
+		fs->nffile->stat_record->numpackets	+= table->out_packets;
+		fs->nffile->stat_record->numbytes	+= table->out_bytes;
 	
 		if ( fs->xstat ) {
 			uint32_t bpp = table->packets ? table->bytes/table->packets : 0;
@@ -2352,7 +2567,9 @@ uint16_t	icmp;
 		master_record->v6.srcaddr[1] = htonll(master_record->v6.srcaddr[1]);
 		master_record->v6.dstaddr[0] = htonll(master_record->v6.dstaddr[0]);
 		master_record->v6.dstaddr[1] = htonll(master_record->v6.dstaddr[1]);
-		memcpy(peer->buff_ptr, master_record->v6.srcaddr, 4 * sizeof(uint64_t));
+		// keep compiler happy
+		// memcpy(peer->buff_ptr, master_record->v6.srcaddr, 4 * sizeof(uint64_t));
+		memcpy(peer->buff_ptr, master_record->ip_union._ip_64.addr, 4 * sizeof(uint64_t));
 		peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + 4 * sizeof(uint64_t));
 	} else {
 		Put_val32(htonl(master_record->v4.srcaddr), peer->buff_ptr);
@@ -2458,7 +2675,7 @@ uint16_t	icmp;
 				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint16_t));
 				break;
 			case EX_OUT_PKG_4: 
-				Put_val32(htonl(master_record->out_pkts), peer->buff_ptr);
+				Put_val32(htonl((uint32_t)master_record->out_pkts), peer->buff_ptr);
 				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_OUT_PKG_8:
@@ -2466,7 +2683,7 @@ uint16_t	icmp;
 				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint64_t));
 				break;
 			case EX_OUT_BYTES_4:
-				Put_val32(htonl(master_record->out_bytes), peer->buff_ptr);
+				Put_val32(htonl((uint32_t)master_record->out_bytes), peer->buff_ptr);
 				peer->buff_ptr = (void *)((pointer_addr_t)peer->buff_ptr + sizeof(uint32_t));
 				break;
 			case EX_OUT_BYTES_8:
@@ -2706,6 +2923,7 @@ time_t		now = time(NULL);
 static void InsertSampler( FlowSource_t *fs, exporter_v9_domain_t *exporter, int32_t id, uint16_t mode, uint32_t interval) {
 generic_sampler_t *sampler;
 
+	dbg_printf("[%u] Insert Sampler: Exporter is 0x%llu\n", exporter->info.id, (long long unsigned)exporter);
 	if ( !exporter->sampler ) {
 		// no samplers so far 
 		sampler = (generic_sampler_t *)malloc(sizeof(generic_sampler_t));

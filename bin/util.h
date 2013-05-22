@@ -57,6 +57,8 @@ typedef struct stringlist_s {
 
 void xsleep(long sec);
 
+void EndLog(void);
+
 int InitLog(char *name, char *facility);
 
 void LogError(char *format, ...);

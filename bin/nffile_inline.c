@@ -46,9 +46,13 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required);
 
 static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t required);
 
+static inline void CopyV6IP(uint32_t *dst, uint32_t *src);
+
 static inline void ExpandRecord_v2(common_record_t *input_record, extension_info_t *extension_info, exporter_info_record_t *exporter_info, master_record_t *output_record );
 
+#ifdef NEED_PACKRECORD
 static void PackRecord(master_record_t *master_record, nffile_t *nffile);
+#endif
 
 static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
 
@@ -73,6 +77,13 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
 	return 1;
 } // End of CheckBufferSpace
 
+// Use 4 uint32_t copy cycles, as SPARC CPUs brak
+static inline void CopyV6IP(uint32_t *dst, uint32_t *src) {
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
+	dst[3] = src[3];
+} // End of CopyV6IP
 
 /*
  * Expand file record into master record for further processing
@@ -102,10 +113,15 @@ void		*p = (void *)input_record;
 		output_record->exp_ref 		  = NULL;
 	}
 
+	// map icmp type/code in it's own vars
+	output_record->icmp = output_record->dstport;
+
 	// Required extension 1 - IP addresses
 	if ( (input_record->flags & FLAG_IPV6_ADDR) != 0 )	{ // IPv6
 		// IPv6
-		memcpy((void *)output_record->v6.srcaddr, p, 4 * sizeof(uint64_t));	
+		// keep compiler happy
+		// memcpy((void *)output_record->v6.srcaddr, p, 4 * sizeof(uint64_t));	
+		memcpy((void *)output_record->ip_union._ip_64.addr, p, 4 * sizeof(uint64_t));	
 		p = (void *)((pointer_addr_t)p + 4 * sizeof(uint64_t));
 	} else { 	
 		// IPv4
@@ -201,8 +217,7 @@ void		*p = (void *)input_record;
 				} break;
 			case EX_NEXT_HOP_v6: {
 				tpl_ext_10_t *tpl = (tpl_ext_10_t *)p;
-				output_record->ip_nexthop.v6[0] = tpl->nexthop[0];
-				output_record->ip_nexthop.v6[1] = tpl->nexthop[1];
+				CopyV6IP((uint32_t *)output_record->ip_nexthop.v6, (uint32_t *)tpl->nexthop);
 				p = (void *)tpl->data;
 				SetFlag(output_record->flags, FLAG_IPV6_NH);
 				} break;
@@ -216,8 +231,7 @@ void		*p = (void *)input_record;
 				} break;
 			case EX_NEXT_HOP_BGP_v6: {
 				tpl_ext_12_t *tpl = (tpl_ext_12_t *)p;
-				output_record->bgp_nexthop.v6[0] = tpl->bgp_nexthop[0];
-				output_record->bgp_nexthop.v6[1] = tpl->bgp_nexthop[1];
+				CopyV6IP((uint32_t *)output_record->bgp_nexthop.v6, (uint32_t *)tpl->bgp_nexthop);
 				p = (void *)tpl->data;
 				SetFlag(output_record->flags, FLAG_IPV6_NHB);
 				} break;
@@ -302,8 +316,7 @@ void		*p = (void *)input_record;
 				} break;
 			case EX_ROUTER_IP_v6: {
 				tpl_ext_24_t *tpl = (tpl_ext_24_t *)p;
-				output_record->ip_router.v6[0] = tpl->router_ip[0];
-				output_record->ip_router.v6[1] = tpl->router_ip[1];
+				CopyV6IP((uint32_t *)output_record->ip_router.v6, (uint32_t *)tpl->router_ip);
 				p = (void *)tpl->data;
 				SetFlag(output_record->flags, FLAG_IPV6_EXP);
 				} break;
@@ -328,16 +341,106 @@ void		*p = (void *)input_record;
 			} break;
 			case EX_RECEIVED: {
 				tpl_ext_27_t *tpl = (tpl_ext_27_t *)p;
-				output_record->received = tpl->received;
+				value64_t v;
+				v.val.val32[0] = tpl->v[0];
+				v.val.val32[1] = tpl->v[1];
+				output_record->received = v.val.val64;
 				p = (void *)tpl->data;
 			} break;
-
-			break;
+#ifdef NSEL
+			case EX_NSEL_COMMON: {
+				tpl_ext_37_t *tpl = (tpl_ext_37_t *)p;
+				output_record->flow_start = tpl->flow_start;
+				output_record->conn_id 	  = tpl->conn_id;
+				output_record->fw_event   = tpl->fw_event;
+				output_record->fw_xevent  = tpl->fw_xevent;
+				output_record->icmp = tpl->nsel_icmp;
+				p = (void *)tpl->data;
+			} break;
+			case EX_NSEL_XLATE_PORTS: {
+				tpl_ext_38_t *tpl = (tpl_ext_38_t *)p;
+				output_record->xlate_src_port = tpl->xlate_src_port;
+				output_record->xlate_dst_port = tpl->xlate_dst_port;
+				p = (void *)tpl->data;
+			} break;
+			case EX_NSEL_XLATE_IP_v4: {
+				tpl_ext_39_t *tpl = (tpl_ext_39_t *)p;
+				output_record->xlate_src_ip.v6[0] = 0;
+				output_record->xlate_src_ip.v6[1] = 0;
+				output_record->xlate_src_ip.v4	= tpl->xlate_src_ip;
+				output_record->xlate_dst_ip.v6[0] = 0;
+				output_record->xlate_dst_ip.v6[1] = 0;
+				output_record->xlate_dst_ip.v4	= tpl->xlate_dst_ip;
+				p = (void *)tpl->data;
+				output_record->xlate_flags = 0;
+				} break;
+			case EX_NSEL_XLATE_IP_v6: {
+				tpl_ext_40_t *tpl = (tpl_ext_40_t *)p;
+				output_record->xlate_src_ip.v6[0] = tpl->xlate_src_ip[0];
+				output_record->xlate_src_ip.v6[1] = tpl->xlate_src_ip[1];
+				output_record->xlate_dst_ip.v6[0] = tpl->xlate_dst_ip[0];
+				output_record->xlate_dst_ip.v6[1] = tpl->xlate_dst_ip[1];
+				p = (void *)tpl->data;
+				output_record->xlate_flags = 1;
+				} break;
+			case EX_NSEL_ACL: {
+				tpl_ext_41_t *tpl = (tpl_ext_41_t *)p;
+				int j;
+				for (j=0; j<3; j++) {
+					output_record->ingress_acl_id[j] = tpl->ingress_acl_id[j];
+					output_record->egress_acl_id[j] = tpl->egress_acl_id[j];
+				}
+				p = (void *)tpl->data;
+			} break;
+			case EX_NSEL_USER: {
+				tpl_ext_42_t *tpl = (tpl_ext_42_t *)p;
+				strncpy((void *)output_record->username, (void *)tpl->username, sizeof(output_record->username));
+				output_record->username[sizeof(output_record->username)-1] = '\0';	// safety 0
+				p = (void *)tpl->data;
+			} break;
+			case EX_NSEL_USER_MAX: {
+				tpl_ext_43_t *tpl = (tpl_ext_43_t *)p;
+				strncpy((void *)output_record->username, (void *)tpl->username, sizeof(output_record->username));
+				output_record->username[sizeof(output_record->username)-1] = '\0';	// safety 0
+				p = (void *)tpl->data;
+			} break;
+#endif
+#ifdef NEL
+			case EX_NEL_COMMON: {
+				tpl_ext_46_t *tpl = (tpl_ext_46_t *)p;
+				output_record->nat_event = tpl->nat_event;
+				output_record->post_src_port = tpl->post_src_port;
+				output_record->post_dst_port = tpl->post_dst_port;
+				output_record->ingress_vrfid = tpl->ingress_vrfid;
+				p = (void *)tpl->data;
+			} break;
+			case EX_NEL_GLOBAL_IP_v4: {
+				tpl_ext_47_t *tpl = (tpl_ext_47_t *)p;
+				output_record->nat_inside.v6[0] = 0;
+				output_record->nat_inside.v6[1] = 0;
+				output_record->nat_inside.v4	= tpl->nat_inside;
+				output_record->nat_outside.v6[0] = 0;
+				output_record->nat_outside.v6[1] = 0;
+				output_record->nat_outside.v4	= tpl->nat_outside;
+				p = (void *)tpl->data;
+				output_record->nat_flags = 0;
+				} break;
+			case EX_NEL_GLOBAL_IP_v6: {
+				tpl_ext_48_t *tpl = (tpl_ext_48_t *)p;
+				output_record->nat_inside.v6[0] = tpl->nat_inside[0];
+				output_record->nat_inside.v6[1] = tpl->nat_inside[1];
+				output_record->nat_outside.v6[0] = tpl->nat_outside[0];
+				output_record->nat_outside.v6[1] = tpl->nat_outside[1];
+				p = (void *)tpl->data;
+				output_record->nat_flags = 1;
+				} break;
+#endif
 		}
 	}
 	
 } // End of ExpandRecord_v2
 
+#ifdef NEED_PACKRECORD
 static void PackRecord(master_record_t *master_record, nffile_t *nffile) {
 extension_map_t *extension_map = master_record->map_ref;
 uint32_t required =  COMMON_RECORD_DATA_SIZE + extension_map->extension_size;
@@ -384,7 +487,9 @@ int		i;
 	// Required extension 1 - IP addresses
 	if ( (master_record->flags & FLAG_IPV6_ADDR) != 0 )	{ // IPv6
 		// IPv6
-		memcpy(p, (void *)master_record->v6.srcaddr, 4 * sizeof(uint64_t));	
+		// keep compiler happy
+		// memcpy(p, (void *)master_record->v6.srcaddr, 4 * sizeof(uint64_t));	
+		memcpy(p, (void *)master_record->ip_union._ip_64.addr, 4 * sizeof(uint64_t));	
 		p = (void *)((pointer_addr_t)p + 4 * sizeof(uint64_t));
 	} else { 	
 		// IPv4
@@ -582,7 +687,88 @@ int		i;
 				tpl->received = master_record->received;
 				p = (void *)tpl->data;
 				} break;
-
+#ifdef NSEL
+			case EX_NSEL_COMMON: {
+				tpl_ext_37_t *tpl = (tpl_ext_37_t *)p;
+				tpl->flow_start = master_record->flow_start;
+				tpl->conn_id    = master_record->conn_id;
+				tpl->fw_event   = master_record->fw_event;
+				tpl->nsel_icmp  = master_record->icmp;
+				tpl->fill  = 0;
+				tpl->fill2 = 0;
+				tpl->fw_xevent = master_record->fw_xevent;
+				p = (void *)tpl->data;
+				} break;
+			case EX_NSEL_XLATE_PORTS: {
+				tpl_ext_38_t *tpl = (tpl_ext_38_t *)p;
+				tpl->xlate_src_port	 = master_record->xlate_src_port;
+				tpl->xlate_dst_port	 = master_record->xlate_dst_port;
+				p = (void *)tpl->data;
+				} break;
+			case EX_NSEL_XLATE_IP_v4: {
+				tpl_ext_39_t *tpl = (tpl_ext_39_t *)p;
+				tpl->xlate_src_ip = master_record->xlate_src_ip.v4;
+				tpl->xlate_dst_ip = master_record->xlate_dst_ip.v4;
+				p = (void *)tpl->data;
+				} break;
+			case EX_NSEL_XLATE_IP_v6: {
+				tpl_ext_40_t *tpl = (tpl_ext_40_t *)p;
+				tpl->xlate_src_ip[0] = master_record->xlate_src_ip.v6[0];
+				tpl->xlate_src_ip[1] = master_record->xlate_src_ip.v6[1];
+				p = (void *)tpl->data;
+				tpl->xlate_dst_ip[0] = master_record->xlate_dst_ip.v6[0];
+				tpl->xlate_dst_ip[1] = master_record->xlate_dst_ip.v6[1];
+				p = (void *)tpl->data;
+				} break;
+			case EX_NSEL_ACL: {
+				tpl_ext_41_t *tpl = (tpl_ext_41_t *)p;
+				int j;
+				for (j=0; j<3; j++) {
+					tpl->ingress_acl_id[j] = master_record->ingress_acl_id[j];
+					tpl->egress_acl_id[j]  = master_record->egress_acl_id[j];
+				}
+				p = (void *)tpl->data;
+			} break;
+			case EX_NSEL_USER: {
+				tpl_ext_42_t *tpl = (tpl_ext_42_t *)p;
+				strncpy((void *)tpl->username, (void *)master_record->username, sizeof(tpl->username));
+				tpl->username[sizeof(tpl->username)-1] = '\0';	// safety 0
+				p = (void *)tpl->data;
+			} break;
+			case EX_NSEL_USER_MAX: {
+				tpl_ext_43_t *tpl = (tpl_ext_43_t *)p;
+				strncpy((void *)tpl->username, (void *)master_record->username, sizeof(tpl->username));
+				tpl->username[sizeof(tpl->username)-1] = '\0';	// safety 0
+				p = (void *)tpl->data;
+			} break;
+#endif
+#ifdef NEL
+			case EX_NEL_COMMON: {
+				tpl_ext_46_t *tpl = (tpl_ext_46_t *)p;
+				tpl->nat_event  = master_record->nat_event;
+				tpl->fill  = 0;
+				tpl->flags = 0;
+				tpl->post_src_port	 = master_record->post_src_port;
+				tpl->post_dst_port	 = master_record->post_dst_port;
+				tpl->ingress_vrfid   = master_record->ingress_vrfid;
+				p = (void *)tpl->data;
+				} break;
+			case EX_NEL_GLOBAL_IP_v4: {
+				tpl_ext_47_t *tpl = (tpl_ext_47_t *)p;
+				tpl->nat_inside = master_record->nat_inside.v4;
+				tpl->nat_outside = master_record->nat_outside.v4;
+				p = (void *)tpl->data;
+				} break;
+			case EX_NEL_GLOBAL_IP_v6: {
+				tpl_ext_48_t *tpl = (tpl_ext_48_t *)p;
+				tpl->nat_inside[0] = master_record->nat_inside.v6[0];
+				tpl->nat_inside[1] = master_record->nat_inside.v6[1];
+				p = (void *)tpl->data;
+				tpl->nat_outside[0] = master_record->nat_outside.v6[0];
+				tpl->nat_outside[1] = master_record->nat_outside.v6[1];
+				p = (void *)tpl->data;
+				} break;
+#endif
 		}
 	}
 
@@ -598,6 +784,7 @@ int		i;
 	nffile->buff_ptr = p;
 
 } // End of PackRecord
+#endif
 
 static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t required) {
 
