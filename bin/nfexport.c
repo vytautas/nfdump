@@ -237,6 +237,9 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 		// Flush the map to disk
 		AppendToBuffer(nffile, (void *)export_maps[map_id], export_maps[map_id]->size);
 
+		// Update current extension map
+		extension_map_list->slot[map_id]->map = export_maps[map_id];
+
 	}
 
 } // End of ExportExtensionMaps
